@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    "input_processor",
+    "output_computer"
+  ],
+  "edges": [
+    ["input_processor", "output_computer"]
+  ],
+  "mapping": {
+    "input_processor": "layer1",
+    "output_computer": "layer2"
+  },
+  "description": "Phase 2: Simple 2-layer MLP for projectile motion with dynamic mapping",
+  "physics_interpretation": {
+    "input_processor": "Processes raw inputs (time, velocity, gravity, angle) and learns feature combinations like v0*t and g*t²",
+    "output_computer": "Combines processed features to compute final height prediction"
+  }
+}
