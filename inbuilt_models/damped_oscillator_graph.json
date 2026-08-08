@@ -1,0 +1,84 @@
+{
+  "nodes": [
+    {
+      "name": "m",
+      "type": "state",
+      "description": "Inertial resistance to acceleration",
+      "formula": "m*x'' + c*x' + k*x = 0",
+      "term": "m",
+      "variables": {}
+    },
+    {
+      "name": "c",
+      "type": "state",
+      "description": "Energy dissipation coefficient (friction)",
+      "formula": "m*x'' + c*x' + k*x = 0",
+      "term": "c",
+      "variables": {}
+    },
+    {
+      "name": "k",
+      "type": "state",
+      "description": "Restoring force coefficient",
+      "formula": "m*x'' + c*x' + k*x = 0",
+      "term": "k",
+      "variables": {}
+    },
+    {
+      "name": "x",
+      "type": "output",
+      "description": "System state — what the PINN predicts",
+      "formula": "m*x'' + c*x' + k*x = 0",
+      "term": "x",
+      "variables": { "t": "Time (s)" }
+    },
+    {
+      "name": "x_dot",
+      "type": "state",
+      "description": "First time derivative of displacement",
+      "formula": "m*x'' + c*x' + k*x = 0",
+      "term": "x'",
+      "variables": { "t": "Time (s)" }
+    },
+    {
+      "name": "x_ddot",
+      "type": "state",
+      "description": "Second time derivative — driven by ODE balance",
+      "formula": "m*x'' + c*x' + k*x = 0",
+      "term": "x''",
+      "variables": { "t": "Time (s)" }
+    }
+  ],
+  "edges": [
+    ["m", "x_ddot", 1.0],
+    ["c", "x_dot", 1.0],
+    ["k", "x", 1.0],
+    ["x_dot", "x_ddot", 1.0],
+    ["x", "x_ddot", 1.0],
+    ["x_ddot", "x", 1.0]
+  ],
+  "mapping": {
+    "m": "m",
+    "c": "c",
+    "k": "k",
+    "x": "x",
+    "x_dot": "x_dot",
+    "x_ddot": "x_ddot"
+  },
+  "model_metadata": {
+    "model_name": "DampedOscillatorPINN",
+    "version": "1.0",
+    "architecture": "m, c, k, x, x_dot -> x_ddot (ODE balance)",
+    "formula": "m*x'' + c*x' + k*x = 0",
+    "domain": "Classical Mechanics",
+    "intervention_supported": ["mask", "perturb", "freeze"],
+    "axis_labels": {
+      "x_label": "Time",
+      "x_unit": "seconds",
+      "y_label": "Displacement",
+      "y_unit": "meters",
+      "loss_label": "ODE Residual",
+      "loss_unit": "N^2"
+    }
+  }
+}

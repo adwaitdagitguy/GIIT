@@ -1,0 +1,147 @@
+{
+  "metadata": {
+    "system": "1D Viscous Burgers Equation",
+    "equation": "u_t + u * u_x - nu * u_xx = 0",
+    "description": "A fundamental PDE combining non-linear advection and diffusion. The PINN predicts the velocity field u(t, x) given time t and spatial coordinate x.",
+    "pinn_input": "[t, x] (time and spatial coordinate)",
+    "pinn_output": "u(t, x) (velocity field)"
+  },
+  "nodes": [
+    {
+      "id": "nu",
+      "label": "Kinematic Viscosity",
+      "symbol": "nu",
+      "type": "parameter",
+      "unit": "m^2/s",
+      "description": "Diffusion coefficient that smooths the velocity gradient"
+    },
+    {
+      "id": "u",
+      "label": "Velocity Field",
+      "symbol": "u",
+      "type": "output",
+      "unit": "m/s",
+      "description": "The predicted velocity field u(t, x)"
+    },
+    {
+      "id": "u_t",
+      "label": "Temporal Gradient",
+      "symbol": "u_t",
+      "type": "intermediate",
+      "unit": "m/(s^2)",
+      "description": "First derivative of velocity with respect to time"
+    },
+    {
+      "id": "u_x",
+      "label": "Spatial Gradient",
+      "symbol": "u_x",
+      "type": "intermediate",
+      "unit": "1/s",
+      "description": "First derivative of velocity with respect to space"
+    },
+    {
+      "id": "u_xx",
+      "label": "Spatial Laplacian",
+      "symbol": "u_xx",
+      "type": "intermediate",
+      "unit": "1/(m*s)",
+      "description": "Second derivative of velocity with respect to space"
+    }
+  ],
+  "edges": [
+    {
+      "source": "nu",
+      "target": "u_xx",
+      "label": "scales diffusion"
+    },
+    {
+      "source": "u",
+      "target": "u_x",
+      "label": "non-linear advection"
+    },
+    {
+      "source": "u_t",
+      "target": "u",
+      "label": "time evolution"
+    },
+    {
+      "source": "u_x",
+      "target": "u",
+      "label": "spatial transport"
+    },
+    {
+      "source": "u_xx",
+      "target": "u",
+      "label": "viscous smoothing"
+    }
+  ],
+  "input_spec": {
+    "names": [
+      "t",
+      "x"
+    ],
+    "dim": 2,
+    "ranges": {
+      "t": [
+        0,
+        1
+      ],
+      "x": [
+        -1,
+        1
+      ]
+    }
+  },
+  "output_spec": {
+    "names": [
+      "u"
+    ],
+    "dim": 1
+  },
+  "parameters": {
+    "nu": {
+      "label": "Kinematic Viscosity",
+      "default_value": 0.003183,
+      "expected_sensitivity_sign": "-",
+      "trend": "Increasing viscosity reduces the sharpness of the shock wave and decreases peak gradients"
+    }
+  },
+  "residual": {
+    "formula": "u_t + u * u_x - nu * u_xx",
+    "description": "PDE residual: u_t + u*u_x - nu*u_xx = 0",
+    "derivatives": {
+      "u": {
+        "wrt": [
+          "t",
+          "x"
+        ],
+        "order": 0
+      },
+      "u_t": {
+        "wrt": [
+          "t"
+        ],
+        "order": 1,
+        "of": "u"
+      },
+      "u_x": {
+        "wrt": [
+          "x"
+        ],
+        "order": 1,
+        "of": "u"
+      },
+      "u_xx": {
+        "wrt": [
+          "x"
+        ],
+        "order": 2,
+        "of": "u"
+      }
+    }
+  },
+  "expected_trends": {
+    "Kinematic Viscosity": "decreases_amplitude"
+  },
+  "test_data_generator": "import numpy as np\ndef generate(params):\n    nu = params.get('nu', 0.01 / np.pi)\n    t_vals = np.linspace(0, 1, 100)\n    x_vals = np.linspace(-1, 1, 100)\n    T, X = np.meshgrid(t_vals, x_vals)\n    # Using a simplified analytical-like approximation for Burgers shock\n    # u(x,t) approx -sin(pi*x) * exp(-nu*pi**2 * t)\n    U = -np.sin(np.pi * X) * np.exp(-nu * (np.pi**2) * T)\n    inputs = np.stack([T.ravel(), X.ravel()], axis=-1)\n    outputs = U.ravel().reshape(-1, 1)\n    return inputs, outputs"
+}
