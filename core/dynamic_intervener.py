@@ -28,6 +28,17 @@ import numpy as np
 import contextlib
 import io
 
+# Physics ruleset utilities (compute derived quantities from model output)
+try:
+    from utils.physics_utils import compute_derived_quantity, get_quantity_for_trend
+except ImportError:
+    # Fallback: define no-ops so the rest of the module loads cleanly
+    def compute_derived_quantity(ruleset, quantity_name, t_array, x_array):
+        return None
+    def get_quantity_for_trend(ruleset, trend_str):
+        return None, None
+
+
 @contextlib.contextmanager
 def _silence_and_mock_plots():
     """Suppress stdout and mock plt.show() during dynamic code execution."""
@@ -249,6 +260,8 @@ class DynamicSciMLIntervener:
       - generate_mapping_with_confidence()
     """
 
+    PERTURBATION_SEED = 123
+
     def __init__(self, model: nn.Module, graph: dict):
         """
         Args:
@@ -288,10 +301,29 @@ class DynamicSciMLIntervener:
 
         # Populated by perturbation / mapping
         self._perturbation_results = {}
+        self._perturbation_seed = None
         self._mapping = {}
+        # Physics ruleset for derived quantity scoring (set via set_physics_ruleset)
+        self.physics_ruleset = None
 
         print("\nINITIALIZATION COMPLETE")
         print("=" * 60)
+
+    def set_physics_ruleset(self, ruleset: dict):
+        """
+        Attach a physics ruleset (from LLM suggestion or manual upload) to the
+        intervener. Once set, auto_map_nodes() will use the ruleset's compute_fn
+        functions to score layers by the magnitude and direction of change in
+        derived physical quantities (e.g. frequency, amplitude).
+
+        Args:
+            ruleset : Dict parsed from the physics ruleset JSON.
+        """
+        self.physics_ruleset = ruleset
+        quantities = list(ruleset.get("quantities", {}).keys()) if ruleset else []
+        print(f"\n  [Ruleset] Physics ruleset attached. Quantities: {quantities}")
+
+
 
     def _validate_graph(self):
         """Basic validation of the graph structure."""
@@ -307,11 +339,18 @@ class DynamicSciMLIntervener:
 
         print(f"\n  Causal Edges ({len(edges)}):")
         for e in edges:
-            print(f"    {e['source']:12s} → {e['target']}")
+            if isinstance(e, dict):
+                source = e.get("source", "")
+                target = e.get("target", "")
+            elif isinstance(e, (list, tuple)) and len(e) >= 2:
+                source, target = e[0], e[1]
+            else:
+                continue
+            print(f"    {str(source):12s} -> {target}")
 
         print(f"\n  Expected Trends ({len(self.expected_trends)}):")
         for label, trend in self.expected_trends.items():
-            print(f"    {label:22s} → {trend}")
+            print(f"    {label:22s} -> {trend}")
 
     # ── L2 Norm ───────────────────────────────────────────────────────────────
     def compute_l2_norm(
@@ -556,11 +595,15 @@ class DynamicSciMLIntervener:
         input_tensor: torch.Tensor,
         sigma: float = 0.1,
         verbose: bool = True,
+        seed: int = None,
     ) -> dict:
         """
         Systematic perturbation test: inject noise into each tensor,
         measure output change (delta_y). Sorted by impact.
         """
+        seed = self.PERTURBATION_SEED if seed is None else int(seed)
+        torch.manual_seed(seed)
+        self._perturbation_seed = seed
         inventory = self.get_perturbable_tensors()
 
         if verbose:
@@ -623,12 +666,31 @@ class DynamicSciMLIntervener:
         input_tensor: torch.Tensor,
         sigma: float = 0.1,
         expected_trends: dict = None,
+        seed: int = None,
+        physics_ruleset: dict = None,
     ) -> dict:
         """
         Auto-discover which PyTorch layer corresponds to which physical
         causal node by comparing perturbation effects against expected trends.
 
         Uses expected_trends from graph.json if not explicitly provided.
+        When a physics_ruleset is provided (or attached via set_physics_ruleset),
+        derived quantities (frequency, amplitude, …) are computed from the
+        model output using the ruleset's compute_fn functions.  Scoring then
+        uses both the **magnitude** and the **direction** of change:
+            raw_score = direction_sign × |Δquantity|
+        where direction_sign = +1 when the change matches the expected trend
+        direction, and −1 otherwise.
+
+        Falls back to the existing zero-crossing / signal-range heuristics when
+        no ruleset is available or no matching quantity is found.
+
+        Args:
+            input_tensor   : Model input tensor (shape [N, input_dim]).
+            sigma          : Gaussian noise std for perturbation.
+            expected_trends: Override the graph.json expected_trends.
+            seed           : Random seed for reproducible perturbation.
+            physics_ruleset: Override self.physics_ruleset for this call.
         """
         if expected_trends is None:
             expected_trends = self.expected_trends
@@ -637,35 +699,69 @@ class DynamicSciMLIntervener:
             print("  [!] No expected_trends available — cannot auto-map nodes")
             return {}
 
+        # Resolve ruleset: kwarg > self attribute
+        ruleset = physics_ruleset if physics_ruleset is not None else self.physics_ruleset
+
+        seed = self.PERTURBATION_SEED if seed is None else int(seed)
+        torch.manual_seed(seed)
+
+        if self._perturbation_seed != seed:
+            self._perturbation_results = {}
+
         print("\n" + "=" * 60)
         print("AUTO-MAP NODES  (Heuristic Discovery)")
+        if ruleset:
+            qnames = list(ruleset.get("quantities", {}).keys())
+            print(f"AUTO-MAP NODES  (Ruleset-Enhanced: {qnames})")
+        else:
+            print("AUTO-MAP NODES  (Heuristic Discovery)")
         print("=" * 60)
 
         # Run perturbation if not cached
         if not self._perturbation_results:
             print("  [info] No cached perturbation results; running now...")
-            self.run_systematic_perturbation(input_tensor, sigma=sigma, verbose=False)
+            self.run_systematic_perturbation(
+                input_tensor, sigma=sigma, verbose=False, seed=seed
+            )
 
         self.model.eval()
         with torch.no_grad():
             y_base = self.model(input_tensor).squeeze()
+
+        # ── Precompute base derived quantities using the ruleset ──────────────
+        # Convert input/output to numpy once for the baseline
+        t_base_np = input_tensor.detach().cpu().numpy()
+        if t_base_np.ndim > 1:
+            t_base_np = t_base_np[:, 0]  # use first input column (e.g. time)
+        x_base_np = y_base.detach().cpu().numpy().ravel()
+
+        base_derived = {}     # { quantity_name: scalar }
+        if ruleset:
+            for qname in ruleset.get("quantities", {}):
+                val = compute_derived_quantity(ruleset, qname, t_base_np, x_base_np)
+                base_derived[qname] = val
+                print(f"  [Ruleset] Base {qname} = {val}")
 
         def _zero_crossings(signal):
             signs = torch.sign(signal)
             return int(((signs[1:] * signs[:-1]) < 0).sum().item())
 
         # Compute per-layer effect signatures
+        # ── Compute per-layer effect signatures ───────────────────────────────
         layer_signatures = {}
         for name in self._perturbation_results:
             state = self.model.state_dict()
             original_tensor = state[name].clone()
-            noise = torch.randn_like(original_tensor) * sigma
+            torch.manual_seed(seed)
+            # Use strictly positive noise for physical parameter directional perturbation
+            noise = torch.abs(torch.randn_like(original_tensor)) * sigma
             state[name] = original_tensor + noise
             self.model.load_state_dict(state)
 
             with torch.no_grad():
                 y_pert = self.model(input_tensor).squeeze()
 
+            # ── Fallback heuristics (always computed) ─────────────────────────
             base_amp = (y_base.max() - y_base.min()).item()
             pert_amp = (y_pert.max() - y_pert.min()).item()
             delta_amp = pert_amp - base_amp
@@ -674,49 +770,133 @@ class DynamicSciMLIntervener:
             pert_zc = _zero_crossings(y_pert)
             delta_zc = pert_zc - base_zc
 
-            layer_signatures[name] = {
+            sig = {
                 "delta_amplitude": delta_amp,
                 "delta_frequency": delta_zc,
             }
+
+            # ── Ruleset-derived quantity deltas ───────────────────────────────
+            if ruleset:
+                x_pert_np = y_pert.detach().cpu().numpy().ravel()
+                for qname in ruleset.get("quantities", {}):
+                    q_pert = compute_derived_quantity(ruleset, qname, t_base_np, x_pert_np)
+                    q_base = base_derived.get(qname)
+                    if q_pert is not None and q_base is not None:
+                        sig[f"delta_{qname}"] = q_pert - q_base
+                    else:
+                        sig[f"delta_{qname}"] = None
+
+            layer_signatures[name] = sig
 
             state[name] = original_tensor
             self.model.load_state_dict(state)
 
         # Map each physical node to best layer
+        # ── Map each physical node to the best layer ──────────────────────────
         mapping = {}
         used_layers = {}
 
         for node, trend in expected_trends.items():
             trend_lower = trend.lower()
-            best_layer = None
-            best_score = -1e9
+            scored_layers = []
+
+            # Check if the ruleset provides a matching quantity for this trend
+            q_name, q_info = get_quantity_for_trend(ruleset, trend) if ruleset else (None, None)
+            using_ruleset_for_node = (q_name is not None) and (
+                f"delta_{q_name}" in next(iter(layer_signatures.values()), {})
+            )
+
+            # Determine expected direction: +1 for "increases_X", -1 for "decreases_X"
+            if "increases_" in trend_lower:
+                expected_direction = +1
+            elif "decreases_" in trend_lower:
+                expected_direction = -1
+            else:
+                expected_direction = 0
 
             for name, sig in layer_signatures.items():
-                if "decreases_amplitude" in trend_lower:
-                    score = -sig["delta_amplitude"]
+                if using_ruleset_for_node:
+                    # ── Ruleset path: direction × magnitude ─────────────────
+                    dq = sig.get(f"delta_{q_name}")
+                    if dq is None:
+                        raw_score = 0.0
+                        change = None
+                    else:
+                        direction_sign = +1 if (expected_direction * dq > 0) else -1
+                        raw_score = direction_sign * abs(dq)
+                        change = dq
+                elif "decreases_amplitude" in trend_lower:
+                    raw_score = -sig["delta_amplitude"]
+                    change = sig["delta_amplitude"]
                 elif "increases_amplitude" in trend_lower:
-                    score = sig["delta_amplitude"]
+                    raw_score = sig["delta_amplitude"]
+                    change = sig["delta_amplitude"]
                 elif "increases_frequency" in trend_lower:
-                    score = sig["delta_frequency"]
+                    raw_score = sig["delta_frequency"]
+                    change = sig["delta_frequency"]
                 elif "decreases_frequency" in trend_lower:
-                    score = -sig["delta_frequency"]
+                    raw_score = -sig["delta_frequency"]
+                    change = sig["delta_frequency"]
                 else:
-                    score = self._perturbation_results[name]["delta_y"]
+                    raw_score = self._perturbation_results[name]["delta_y"]
+                    change = None
 
-                if score > best_score:
-                    best_score = score
-                    best_layer = name
+                scored_layers.append((name, raw_score, change))
+
+            scale = max((abs(item[1]) for item in scored_layers), default=0.0)
+            ranked_layers = sorted(scored_layers, key=lambda item: abs(item[1]), reverse=True)
+
+            scoring_mode = f"Ruleset ({q_name})" if using_ruleset_for_node else "Heuristic"
+            print(f"\n  Parameter: {node}  |  Trend: {trend}  |  Scoring: {scoring_mode}")
+            print(f"    {'Rank':<6} {'Tensor':<32} {'Raw score':>12} {'Normalized':>12} {'Change':>10} {'Direction':>10}")
+            for rank, (name, raw_score, change) in enumerate(ranked_layers, start=1):
+                normalized_score = raw_score / scale if scale else 0.0
+                if change is None:
+                    change_sign = "n/a"
+                elif change > 1e-8:
+                    change_sign = "+"
+                elif change < -1e-8:
+                    change_sign = "-"
+                else:
+                    change_sign = "~0"
+                # Direction match for ruleset mode
+                if using_ruleset_for_node and change is not None:
+                    dir_match = "[Y]" if (expected_direction * change > 0) else "[N]"
+                else:
+                    dir_match = "n/a"
+                print(
+                    f"    {rank:<6} {name:<32} {raw_score:>12.6g} "
+                    f"{normalized_score:>12.6f} {change_sign:>10} {dir_match:>10}"
+                )
+
+            best_layer, raw_score, change = max(scored_layers, key=lambda item: abs(item[1]))
+            best_score = abs(raw_score) / scale if scale else 0.0
+
+            # Direction match for the best layer
+            if using_ruleset_for_node and change is not None:
+                direction_match = bool(expected_direction * change > 0)
+                delta_q_best = change
+            else:
+                direction_match = None
+                delta_q_best = None
 
             used_layers.setdefault(best_layer, []).append(node)
             mapping[node] = {
-                "layer": best_layer,
+                "layer":           best_layer,
                 "delta_amplitude": layer_signatures[best_layer]["delta_amplitude"],
                 "delta_frequency": layer_signatures[best_layer]["delta_frequency"],
-                "score": best_score,
-                "trend": trend,
+                "score":           best_score,
+                "raw_score":       raw_score,
+                "trend":           trend,
+                # Ruleset-specific fields (None when heuristic path is used)
+                "quantity_name":   q_name,
+                "delta_q":         delta_q_best,
+                "direction_match": direction_match,
+                "scoring_mode":    scoring_mode,
             }
 
         # Assign confidence
+        # ── Assign confidence ─────────────────────────────────────────────────
         layer_use_counts = {layer: len(nodes) for layer, nodes in used_layers.items()}
         for node, info in mapping.items():
             layer = info["layer"]
@@ -732,14 +912,24 @@ class DynamicSciMLIntervener:
             else:
                 info["confidence"] = "High"
                 info["note"] = f"Layer '{layer}' uniquely matched trend '{info['trend']}'."
+            # Downgrade confidence if direction didn't match
+            if info["direction_match"] is False and info["confidence"] == "High":
+                info["confidence"] = "Medium"
+                info["note"] += " (Direction mismatch — layer moved quantity in wrong direction.)"
 
         # Print results
-        print(f"\n  {'Physical Node':<22}  {'Mapped Layer':<32}  {'Confidence':<12}  Note")
-        print(f"  {'-' * 100}")
+        print(f"\n  {'Physical Node':<22}  {'Mapped Layer':<32}  {'Confidence':<12}  {'Dir Match':<10}  Note")
+        print(f"  {'-' * 115}")
         for node, info in mapping.items():
             conf_tag = "[HIGH]" if info["confidence"] == "High" else (
-                "[AMBIG]" if info["confidence"] == "Ambiguous" else "[LOW]")
-            print(f"  {node:<22}  {info['layer']:<32}  {conf_tag:<12}  {info['note']}")
+                "[MED]" if info["confidence"] == "Medium" else (
+                    "[AMBIG]" if info["confidence"] == "Ambiguous" else "[LOW]"
+                )
+            )
+            dir_tag = "[Y]" if info["direction_match"] is True else (
+                "[N]" if info["direction_match"] is False else "n/a"
+            )
+            print(f"  {node:<22}  {info['layer']:<32}  {conf_tag:<12}  {dir_tag:<10}  {info['note']}")
         print("=" * 60)
 
         self._mapping = mapping
@@ -751,7 +941,7 @@ class DynamicSciMLIntervener:
         input_tensor: torch.Tensor,
     ) -> dict:
         """
-        Strategy 2: Sensitivity Mapping (for Physical Nodes like y_x, y_xx).
+        Strategy 2: Sensitivity Mapping via Gradient (for Physical Nodes like y_x, y_xx).
 
         Computes the gradient of a physical node's mean value with respect
         to every layer's weights. The layer with the largest gradient
@@ -760,7 +950,7 @@ class DynamicSciMLIntervener:
         Returns:
             dict { layer_name: gradient_magnitude }
         """
-        deriv_spec  = self.residual_spec.get("derivatives", {})
+        deriv_spec = self.residual_spec.get("derivatives", {})
         if not deriv_spec:
             return {}
 
@@ -786,11 +976,76 @@ class DynamicSciMLIntervener:
         self.model.zero_grad()
         return sensitivity
 
+    def _measure_node_perturbation_sensitivity(
+        self,
+        node_id: str,
+        input_tensor: torch.Tensor,
+        sigma: float = 0.1,
+        seed: int = None,
+    ) -> dict:
+        """
+        Strategy 2: Perturbation Sensitivity (delta u / |u|) for Physical Nodes.
+
+        Measures the relative change in a physical node's value when each neural
+        network layer tensor is perturbed by Gaussian noise:
+            Sensitivity(W) = mean(|u_pert - u_base|) / (mean(|u_base|) + 1e-8)
+
+        Returns:
+            dict { layer_name: relative_perturbation_sensitivity }
+        """
+        deriv_spec = self.residual_spec.get("derivatives", {})
+
+        # 1. Baseline evaluation of the physical node
+        self.model.eval()
+        base_inp = input_tensor.detach().clone().requires_grad_(True)
+        base_computed = _compute_derivatives(self.model, base_inp, self.input_spec, deriv_spec)
+
+        if node_id not in base_computed:
+            return {}
+
+        u_base = base_computed[node_id].detach()
+        u_denom = u_base.abs().mean().item() + 1e-8
+
+        # 2. Perturb each layer and measure relative change
+        seed = self.PERTURBATION_SEED if seed is None else int(seed)
+        inventory = self.get_perturbable_tensors()
+        sensitivity = {}
+
+        for name in inventory:
+            state = self.model.state_dict()
+            orig_t = state[name].clone()
+
+            torch.manual_seed(seed)
+            noise = torch.randn_like(orig_t) * sigma
+            state[name] = orig_t + noise
+            self.model.load_state_dict(state)
+
+            # Recompute physical node with perturbed layer
+            pert_inp = input_tensor.detach().clone().requires_grad_(True)
+            pert_computed = _compute_derivatives(self.model, pert_inp, self.input_spec, deriv_spec)
+
+            if node_id in pert_computed:
+                u_pert = pert_computed[node_id].detach()
+                delta_u = (u_pert - u_base).abs().mean().item()
+                rel_sens = delta_u / u_denom
+            else:
+                rel_sens = 0.0
+
+            sensitivity[name] = rel_sens
+
+            # Restore layer
+            state[name] = orig_t
+            self.model.load_state_dict(state)
+
+        return sensitivity
+
     def generate_mapping_with_confidence(
         self,
         input_tensor: torch.Tensor,
         sigma: float = 0.1,
         expected_trends: dict = None,
+        seed: int = None,
+        sensitivity_method: str = "gradient",
     ) -> dict:
         """
         Combined mapping using two strategies:
@@ -800,8 +1055,8 @@ class DynamicSciMLIntervener:
             Matches the layer whose effect best matches 'expected_trends'.
 
         Strategy 2 — Sensitivity Mapping (for physical nodes like y_x, y_xx):
-            Computes the gradient of the node value wrt each layer's weights.
-            The layer with the largest gradient magnitude "owns" that node.
+            - If sensitivity_method == 'gradient': uses gradient magnitude wrt weights
+            - If sensitivity_method == 'perturbation': uses relative perturbation sensitivity (delta u / u)
         """
         print("\n" + "=" * 60)
         print("GENERATING AUTOMATED MAPPING WITH CONFIDENCE")
@@ -814,15 +1069,25 @@ class DynamicSciMLIntervener:
         # ── Strategy 1: Trend Mapping for Parameters ─────────────────────────
         trends = expected_trends or self.expected_trends
         if trends:
-            print("\n  [Strategy 1] Trend Mapping for Parameters...")
-            trend_mapping = self.auto_map_nodes(input_tensor, sigma, trends)
+            ruleset_status = "with ruleset" if self.physics_ruleset else "heuristic fallback"
+            print(f"\n  [Strategy 1] Trend Mapping for Parameters ({ruleset_status})...")
+            trend_mapping = self.auto_map_nodes(
+                input_tensor=input_tensor,
+                sigma=sigma,
+                expected_trends=trends,
+                seed=seed,
+                physics_ruleset=self.physics_ruleset,
+            )
             for node_label, info in trend_mapping.items():
                 mapping[node_label] = {**info, "strategy": "Trend (Behavior)"}
         else:
             print("\n  [Strategy 1] No expected_trends — skipping trend mapping.")
 
+
         # ── Strategy 2: Sensitivity Mapping for Physical Nodes ────────────────
-        print("\n  [Strategy 2] Sensitivity Mapping for Physical Nodes...")
+        is_perturb = (sensitivity_method.lower() == "perturbation")
+        method_label = "Perturbation (delta_u/u)" if is_perturb else "Gradient"
+        print(f"\n  [Strategy 2] Sensitivity Mapping for Physical Nodes ({method_label})...")
         already_mapped_labels = set(mapping.keys())
 
         for node in all_nodes:
@@ -836,23 +1101,51 @@ class DynamicSciMLIntervener:
             if node_label in already_mapped_labels:
                 continue
 
-            sens = self._measure_node_sensitivity(node_id, input_tensor)
+            if is_perturb:
+                sens = self._measure_node_perturbation_sensitivity(
+                    node_id, input_tensor, sigma=sigma, seed=seed
+                )
+            else:
+                sens = self._measure_node_sensitivity(node_id, input_tensor)
+
             if not sens:
                 print(f"    [!] {node_label}: no derivatives found — skipping.")
                 continue
 
-            best_layer = max(sens, key=sens.get)
-            best_score = sens[best_layer]
+            ranked_layers = sorted(sens.items(), key=lambda item: abs(item[1]), reverse=True)
+            best_layer, raw_score = ranked_layers[0]
+            scale = max((abs(value) for value in sens.values()), default=0.0)
+            best_score = abs(raw_score) / scale if scale else 0.0
+            rank = 1
 
-            confidence = "High" if best_score > 1e-4 else ("Medium" if best_score > 1e-7 else "Low")
+            if is_perturb:
+                confidence = "High" if raw_score > 0.05 else ("Medium" if raw_score > 0.01 else "Low")
+                note_str = f"Layer '{best_layer}' has max relative perturbation Δu/u ({raw_score:.2e}) for node '{node_id}'."
+                strategy_str = "Sensitivity (Perturbation Δu/u)"
+            else:
+                confidence = "High" if raw_score > 1e-4 else ("Medium" if raw_score > 1e-7 else "Low")
+                note_str = f"Layer '{best_layer}' has max gradient magnitude ({raw_score:.2e}) for node '{node_id}'."
+                strategy_str = "Sensitivity (Gradient)"
+
             mapping[node_label] = {
                 "layer":      best_layer,
+                "rank":       rank,
                 "score":      best_score,
+                "raw_score":  raw_score,
                 "confidence": confidence,
-                "note":       f"Layer '{best_layer}' has max gradient magnitude ({best_score:.2e}) for node '{node_id}'.",
-                "strategy":   "Sensitivity (Gradient)",
+                "note":       note_str,
+                "strategy":   strategy_str,
+                "ranked_layers": [
+                    {"rank": i + 1, "layer": layer_name, "score": abs(score), "raw_score": score}
+                    for i, (layer_name, score) in enumerate(ranked_layers)
+                ],
             }
-            print(f"    [OK] {node_label:22s} → {best_layer:30s}  [{confidence}]  score={best_score:.2e}")
+
+            col_hdr = "delta_u/u" if is_perturb else "abs(grad)"
+            print(f"\n    [OK] {node_label:22s} -> {best_layer:30s}  [{confidence}]  rank={rank}  score={best_score:.6f} raw={raw_score:.2e}")
+            print(f"      {'Rank':<4} {'Layer':<30} {col_hdr:>12}")
+            for rnk, (layer_name, score) in enumerate(ranked_layers, start=1):
+                print(f"      {rnk:<4} {layer_name:<30} {abs(score):>12.6e}")
 
         # ── Summary ───────────────────────────────────────────────────────────
         total     = len(mapping)
@@ -867,6 +1160,7 @@ class DynamicSciMLIntervener:
             "ambiguous":   ambiguous,
             "low_conf":    low_conf,
             "alignment_pct": align_pct,
+            "sensitivity_method": sensitivity_method,
         }
 
         status = "[PASS >= 90%]" if align_pct >= 90.0 else "[FAIL < 90%]"
@@ -878,6 +1172,135 @@ class DynamicSciMLIntervener:
 
         return {"mapping": mapping, "summary": summary}
 
+    def run_physical_seed_sweep(
+        self,
+        input_tensor: torch.Tensor,
+        start_seed: int = 0,
+        end_seed: int = 20,
+        sigma: float = 0.1,
+        sensitivity_method: str = "gradient",
+        verbose: bool = False,
+    ) -> dict:
+        """
+        Run a seed sweep specifically across physical parameters and causal variables.
+        
+        For each seed in [start_seed, end_seed], evaluates the mapping confidence score,
+        response signature, and physical parameter sensitivity.
+
+        Returns:
+            dict containing per-physical-variable metric arrays, statistics, and sweep summary.
+        """
+        seeds = list(range(int(start_seed), int(end_seed) + 1))
+        if not seeds:
+            seeds = [int(start_seed)]
+
+        # Collect data per physical variable across seeds
+        per_var_data = {}
+
+        # 1. Physical nodes from graph
+        all_nodes = self.graph.get("nodes", [])
+        for node in all_nodes:
+            nid = node.get("id", node.get("name", ""))
+            nlabel = node.get("label", nid)
+            ntype = node.get("type", "state")
+            per_var_data[nlabel] = {
+                "id": nid,
+                "label": nlabel,
+                "type": ntype,
+                "description": node.get("description", ""),
+                "formula": node.get("formula", ""),
+                "scores": [],
+                "raw_scores": [],
+                "mapped_layers": [],
+                "metric_name": "Mapping Alignment Score",
+            }
+
+        # 2. Physical parameters from graph
+        for sym, pinfo in self.parameters.items():
+            plabel = pinfo.get("label", sym)
+            if plabel not in per_var_data and sym not in per_var_data:
+                per_var_data[sym] = {
+                    "id": sym,
+                    "label": plabel,
+                    "type": "parameter",
+                    "description": pinfo.get("description", ""),
+                    "formula": pinfo.get("formula", ""),
+                    "scores": [],
+                    "raw_scores": [],
+                    "mapped_layers": [],
+                    "metric_name": "Sensitivity Gradient dR/dp",
+                }
+
+        # Run sweep
+        for s in seeds:
+            # Capture mapping across seeds
+            mapping_res = self.generate_mapping_with_confidence(
+                input_tensor=input_tensor,
+                sigma=sigma,
+                seed=s,
+                sensitivity_method=sensitivity_method,
+            )
+            mapping = mapping_res.get("mapping", {})
+
+            for var_key, vdata in per_var_data.items():
+                # Check if var is in mapping
+                matched_info = mapping.get(var_key) or mapping.get(vdata.get("id"))
+                if matched_info:
+                    score = float(matched_info.get("score", 0.0))
+                    raw_score = float(matched_info.get("raw_score", 0.0))
+                    layer = matched_info.get("layer", "Unknown")
+                    vdata["scores"].append(score)
+                    vdata["raw_scores"].append(raw_score)
+                    vdata["mapped_layers"].append(layer)
+                else:
+                    # If not in mapping, check if it has a perturbation or signature fallback
+                    vdata["scores"].append(0.0)
+                    vdata["raw_scores"].append(0.0)
+                    vdata["mapped_layers"].append("None")
+
+        # Get all neural component names
+        all_neural_components = list(self.model.state_dict().keys())
+
+        # Compute summary stats and layer distribution per physical variable
+        for var_key, vdata in per_var_data.items():
+            arr = np.array(vdata["scores"], dtype=float)
+            if len(arr) > 0:
+                vdata["mean"] = float(np.mean(arr))
+                vdata["std"] = float(np.std(arr))
+                vdata["min"] = float(np.min(arr))
+                vdata["max"] = float(np.max(arr))
+                vdata["median"] = float(np.median(arr))
+            else:
+                vdata["mean"] = 0.0
+                vdata["std"] = 0.0
+                vdata["min"] = 0.0
+                vdata["max"] = 0.0
+                vdata["median"] = 0.0
+
+            # Count mapped layers across seeds for this physical variable
+            layer_counts = {comp: 0 for comp in all_neural_components}
+            for lyr in vdata["mapped_layers"]:
+                if lyr in layer_counts:
+                    layer_counts[lyr] += 1
+                elif lyr != "None":
+                    layer_counts[lyr] = layer_counts.get(lyr, 0) + 1
+
+            vdata["layer_distribution"] = layer_counts
+            sorted_layers = sorted(layer_counts.items(), key=lambda x: x[1], reverse=True)
+            vdata["top_layer"] = sorted_layers[0][0] if sorted_layers else "None"
+            vdata["top_layer_count"] = sorted_layers[0][1] if sorted_layers else 0
+
+        return {
+            "seeds": seeds,
+            "all_neural_components": all_neural_components,
+            "physical_variables": per_var_data,
+            "summary": {
+                "start_seed": int(start_seed),
+                "end_seed": int(end_seed),
+                "total_seeds": len(seeds),
+                "sigma": sigma,
+            },
+        }
 
     # ══════════════════════════════════════════════════════════════════════════
     # INTERVENTION ENGINE (from intervention_engine.py — made generic)
@@ -890,13 +1313,14 @@ class DynamicSciMLIntervener:
         strength: float = 1.0,
         input_tensor: torch.Tensor = None,
         target_tensor: torch.Tensor = None,
+        seed: int = None,
     ) -> dict:
         """
         Apply an intervention (mask/perturb) on a specific layer and evaluate.
 
         Args:
             layer_name        : Name of the tensor to intervene on (from state_dict)
-            intervention_type : "mask" (zero out) or "noise" (add Gaussian noise)
+            intervention_type : "mask" (zero out) or "perturb" (add Gaussian noise)
             strength          : Intervention strength (0.0 = no change, 1.0 = full)
             input_tensor      : Input for evaluation
             target_tensor     : Ground truth for MSE evaluation
@@ -924,7 +1348,9 @@ class DynamicSciMLIntervener:
 
         if intervention_type == "mask":
             state[layer_name] = original * (1.0 - strength)
-        elif intervention_type == "noise":
+        elif intervention_type in ("perturb", "noise"):
+            perturbation_seed = self.PERTURBATION_SEED if seed is None else int(seed)
+            torch.manual_seed(perturbation_seed)
             noise = torch.randn_like(original) * strength
             state[layer_name] = original + noise
         else:

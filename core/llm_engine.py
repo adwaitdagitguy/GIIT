@@ -600,6 +600,297 @@ def _print_graph_summary(graph: dict):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# PHYSICS RULESET GENERATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+RULESET_SYSTEM_PROMPT = """You are an expert physicist and scientific Python programmer specialising in signal analysis and physics-informed machine learning.
+
+Your task: Given a physical system description and its expected parameter trends (e.g. "increases_frequency", "decreases_amplitude"), produce a structured JSON ruleset that defines HOW to compute each derived physical quantity from the model's output signal using NumPy.
+
+IMPORTANT RULES:
+1. Produce ONE entry in "quantities" per distinct quantity type referenced in the expected_trends (e.g. one entry for "frequency", one for "amplitude"). Do NOT produce one entry per parameter.
+2. Each quantity entry must have:
+   - "description": clear human-readable explanation
+   - "method": short snake_case name (e.g. "zero_crossing", "range", "envelope_decay")
+   - "trend_key": the EXACT trend string from expected_trends that this quantity measures (e.g. "increases_frequency")
+   - "unit": physical unit string (e.g. "Hz", "m", "m/s")
+   - "compute_fn": a Python code STRING defining `def compute(t, x):` where:
+       * t = 1D numpy array of input values (e.g. time)
+       * x = 1D numpy array of the model's primary output (e.g. displacement)
+       * Returns a SINGLE scalar float
+       * MUST import nothing — only numpy (available as `np`) is in scope
+       * MUST handle edge cases (empty arrays, flat signals) gracefully
+3. If a trend references "frequency" (increases_frequency or decreases_frequency), use zero-crossings.
+4. If a trend references "amplitude" (increases_amplitude or decreases_amplitude), use half the peak-to-peak range.
+5. If multiple parameters share the same quantity type (e.g. two parameters both affect amplitude), still produce only ONE "amplitude" entry. The trend_key should be the one most commonly associated with that quantity.
+6. Output ONLY valid JSON. No markdown, no code fences, no commentary.
+"""
+
+RULESET_EXAMPLE_TRENDS = {
+    "Damping Coefficient": "decreases_amplitude",
+    "Mass": "increases_amplitude",
+    "Spring Constant": "increases_frequency",
+}
+
+RULESET_EXAMPLE_OUTPUT = '''{
+  "system": "1D Damped Harmonic Oscillator",
+  "quantities": {
+    "frequency": {
+      "description": "Oscillation frequency computed from zero-crossings of the displacement signal x(t). More zero-crossings per unit time implies higher frequency.",
+      "method": "zero_crossing",
+      "trend_key": "increases_frequency",
+      "unit": "Hz",
+      "compute_fn": "def compute(t, x):\\n    if len(x) < 2:\\n        return 0.0\\n    signs = np.sign(x)\\n    crossings = int(np.sum(signs[1:] * signs[:-1] < 0))\\n    T = float(t[-1] - t[0]) if float(t[-1] - t[0]) > 0 else 1.0\\n    return crossings / (2.0 * T)"
+    },
+    "amplitude": {
+      "description": "Half the peak-to-peak range of the displacement signal x(t). Larger amplitude means the oscillation has more energy and the envelope decays more slowly.",
+      "method": "range",
+      "trend_key": "decreases_amplitude",
+      "unit": "m",
+      "compute_fn": "def compute(t, x):\\n    if len(x) == 0:\\n        return 0.0\\n    return float((np.max(x) - np.min(x)) / 2.0)"
+    }
+  }
+}'''
+
+RULESET_EXAMPLE_TRENDS_2 = {
+    "Kinematic Viscosity": "decreases_amplitude",
+    "Convection": "increases_amplitude",
+}
+
+RULESET_EXAMPLE_OUTPUT_2 = '''{
+  "system": "1D Viscous Burgers Equation",
+  "quantities": {
+    "amplitude": {
+      "description": "Half the peak-to-peak range of the velocity field u(x,t). Higher amplitude indicates a stronger shock or wave feature in the solution.",
+      "method": "range",
+      "trend_key": "increases_amplitude",
+      "unit": "m/s",
+      "compute_fn": "def compute(t, x):\\n    if len(x) == 0:\\n        return 0.0\\n    return float((np.max(x) - np.min(x)) / 2.0)"
+    }
+  }
+}'''
+
+REQUIRED_RULESET_KEYS = {"system", "quantities"}
+REQUIRED_QUANTITY_KEYS = {"description", "method", "trend_key", "compute_fn"}
+
+
+def validate_physics_ruleset(ruleset: dict) -> list:
+    """
+    Validate the generated physics ruleset JSON.
+    Returns a list of error strings. Empty = valid.
+    """
+    errors = []
+    missing = REQUIRED_RULESET_KEYS - set(ruleset.keys())
+    if missing:
+        errors.append(f"Missing top-level keys: {missing}")
+
+    quantities = ruleset.get("quantities", {})
+    if not isinstance(quantities, dict):
+        errors.append("'quantities' must be a dict")
+        return errors
+
+    if len(quantities) == 0:
+        errors.append("'quantities' must have at least one entry")
+
+    for qname, qinfo in quantities.items():
+        if not isinstance(qinfo, dict):
+            errors.append(f"Quantity '{qname}' must be a dict")
+            continue
+        for key in REQUIRED_QUANTITY_KEYS:
+            if key not in qinfo:
+                errors.append(f"Quantity '{qname}' missing key '{key}'")
+        # Validate compute_fn is a string with 'def compute'
+        fn = qinfo.get("compute_fn", "")
+        if isinstance(fn, str) and "def compute" not in fn:
+            errors.append(
+                f"Quantity '{qname}' compute_fn must define a function named 'compute'"
+            )
+
+    return errors
+
+
+def generate_physics_ruleset(
+    graph: dict,
+    api_key: str,
+    output_path: str = None,
+    model_name: str = DEFAULT_MODEL,
+    verbose: bool = True,
+) -> dict:
+    """
+    Given a graph.json dict (already parsed), call the LLM to generate a
+    physics ruleset JSON describing how to compute each derived quantity
+    (frequency, amplitude, etc.) referenced in expected_trends.
+
+    Args:
+        graph       : The parsed graph dict (from graph.json).
+        api_key     : OpenRouter API key.
+        output_path : Optional path to save the ruleset JSON.
+        model_name  : OpenRouter model identifier.
+        verbose     : Print progress to stdout.
+
+    Returns:
+        The parsed ruleset dict.
+    """
+    expected_trends = graph.get("expected_trends", {})
+    metadata = graph.get("metadata", {})
+    input_spec = graph.get("input_spec", {})
+    output_spec = graph.get("output_spec", {})
+
+    if not expected_trends:
+        raise ValueError(
+            "graph.json has no 'expected_trends'. Cannot suggest rules without trends."
+        )
+
+    if verbose:
+        print("\n" + "=" * 60)
+        print("PHYSICS RULESET GENERATOR")
+        print("=" * 60)
+        print(f"  System       : {metadata.get('system', 'Unknown')}")
+        print(f"  Trends found : {list(expected_trends.values())}")
+        print(f"  LLM model    : {model_name}")
+
+    user_prompt = f"""Here are two examples:
+
+--- EXAMPLE 1: Damped Harmonic Oscillator ---
+EXPECTED TRENDS:
+{json.dumps(RULESET_EXAMPLE_TRENDS, indent=2)}
+
+SYSTEM METADATA:
+{{"system": "1D Damped Harmonic Oscillator", "equation": "m*x'' + c*x' + k*x = 0", "pinn_input": "t (time)", "pinn_output": "x(t) (displacement)"}}
+
+GENERATED RULESET:
+{RULESET_EXAMPLE_OUTPUT}
+
+--- EXAMPLE 2: Burgers' Equation ---
+EXPECTED TRENDS:
+{json.dumps(RULESET_EXAMPLE_TRENDS_2, indent=2)}
+
+SYSTEM METADATA:
+{{"system": "1D Viscous Burgers Equation", "equation": "du/dt + u*du/dx = nu*d2u/dx2", "pinn_input": "[x, t]", "pinn_output": "u(x,t)"}}
+
+GENERATED RULESET:
+{RULESET_EXAMPLE_OUTPUT_2}
+
+--- YOUR TASK ---
+Generate a physics ruleset JSON for the following system.
+
+EXPECTED TRENDS (parameter label → trend):
+{json.dumps(expected_trends, indent=2)}
+
+SYSTEM METADATA:
+{json.dumps(metadata, indent=2)}
+
+INPUT SPEC:
+{json.dumps(input_spec, indent=2)}
+
+OUTPUT SPEC:
+{json.dumps(output_spec, indent=2)}
+
+Generate the ruleset JSON now. Output ONLY the JSON, nothing else."""
+
+    messages = [
+        {"role": "system", "content": RULESET_SYSTEM_PROMPT},
+        {"role": "user",   "content": user_prompt},
+    ]
+
+    last_error = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        if verbose:
+            print(f"\n  [Attempt {attempt}/{MAX_RETRIES}] Calling LLM...")
+
+        try:
+            response_text = _call_openrouter(
+                api_key=api_key,
+                model=model_name,
+                messages=messages,
+                temperature=0.2,
+                max_tokens=2048,
+            )
+
+            if verbose:
+                print(f"  [OK] Received response ({len(response_text)} chars)")
+
+            ruleset = _extract_json_from_response(response_text)
+
+            errors = validate_physics_ruleset(ruleset)
+            if errors:
+                error_msg = "\n".join(f"    - {e}" for e in errors)
+                if verbose:
+                    print(f"  [!] Validation errors:\n{error_msg}")
+                if attempt < MAX_RETRIES:
+                    messages.append({"role": "assistant", "content": response_text})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"The JSON you produced has these validation errors:\n{error_msg}\n\n"
+                            f"Please fix them and output the corrected JSON. Output ONLY the JSON."
+                        )
+                    })
+                    last_error = f"Validation failed: {error_msg}"
+                    time.sleep(RETRY_DELAY_SECONDS)
+                    continue
+                else:
+                    print(f"  [!!] Using ruleset with warnings after {MAX_RETRIES} attempts.")
+            else:
+                if verbose:
+                    print("  [OK] Validation passed!")
+
+            if output_path:
+                with open(output_path, "w", encoding="utf-8") as f:
+                    json.dump(ruleset, f, indent=2)
+                if verbose:
+                    print(f"  [OK] Saved ruleset to: {output_path}")
+
+            if verbose:
+                _print_ruleset_summary(ruleset)
+                print("=" * 60)
+
+            return ruleset
+
+        except json.JSONDecodeError as e:
+            last_error = f"JSON parse error: {e}"
+            if verbose:
+                print(f"  [!] {last_error}")
+            if attempt < MAX_RETRIES:
+                messages.append({"role": "assistant", "content": response_text})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"Your response was not valid JSON. Error: {e}\n"
+                        f"Please output ONLY a valid JSON object with no markdown formatting."
+                    )
+                })
+                time.sleep(RETRY_DELAY_SECONDS)
+            continue
+
+        except Exception as e:
+            last_error = f"API error: {e}"
+            if verbose:
+                print(f"  [!] {last_error}")
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY_SECONDS)
+            continue
+
+    raise RuntimeError(
+        f"Failed to generate valid physics ruleset after {MAX_RETRIES} attempts. "
+        f"Last error: {last_error}"
+    )
+
+
+def _print_ruleset_summary(ruleset: dict):
+    """Pretty-print a summary of the generated physics ruleset."""
+    print(f"\n  +---------------------------------------------------+")
+    print(f"  |  PHYSICS RULESET SUMMARY                          |")
+    print(f"  +---------------------------------------------------+")
+    print(f"  System     : {ruleset.get('system', '?')}")
+    quantities = ruleset.get("quantities", {})
+    print(f"  Quantities : {len(quantities)}")
+    for qname, qinfo in quantities.items():
+        print(f"    [{qname:15s}]  method={qinfo.get('method', '?'):20s}  trend_key={qinfo.get('trend_key', '?')}")
+        print(f"      -> {qinfo.get('description', '')[:70]}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # CLI
 # ══════════════════════════════════════════════════════════════════════════════
 

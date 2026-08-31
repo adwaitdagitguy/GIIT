@@ -200,3 +200,84 @@ def build_node_explanations(graph_data, physics_rules):
         }
 
     return explanations
+
+
+def compute_derived_quantity(
+    ruleset: dict,
+    quantity_name: str,
+    t_array,
+    x_array,
+) -> float | None:
+    """
+    Execute the `compute_fn` for a named quantity in the physics ruleset.
+
+    Args:
+        ruleset       : The physics ruleset dict (from LLM or uploaded JSON).
+        quantity_name : Key in ruleset["quantities"], e.g. "frequency".
+        t_array       : 1-D numpy array of input values (e.g. time).
+        x_array       : 1-D numpy array of the model's primary output (e.g. x(t)).
+
+    Returns:
+        Scalar float, or None if the computation fails.
+    """
+    import numpy as np  # local import — available inside compute_fn via namespace
+
+    quantities = ruleset.get("quantities", {})
+    if quantity_name not in quantities:
+        return None
+
+    fn_code = quantities[quantity_name].get("compute_fn", "")
+    if not fn_code:
+        return None
+
+    # Normalise escaped newlines (JSON may store them as \\n)
+    if "\\n" in fn_code and "\n" not in fn_code.replace("\\n", ""):
+        fn_code = fn_code.replace("\\n", "\n")
+
+    local_ns = {"np": np}
+    try:
+        exec(fn_code, {"np": np, "__builtins__": __builtins__}, local_ns)
+        if "compute" not in local_ns:
+            print(f"  [Ruleset Error] 'compute' function not defined in compute_fn for '{quantity_name}'")
+            return None
+        result = local_ns["compute"](t_array, x_array)
+        return float(result)
+    except Exception as exc:
+        print(f"  [Ruleset Error] compute_fn failed for '{quantity_name}': {exc}")
+        return None
+
+
+def get_quantity_for_trend(ruleset: dict, trend_str: str):
+    """
+    Given a trend string such as "increases_frequency", find the quantity
+    in the ruleset whose trend_key matches (exact or by keyword).
+
+    Returns:
+        (quantity_name, quantity_info_dict) or (None, None) if not found.
+    """
+    if not ruleset:
+        return None, None
+
+    quantities = ruleset.get("quantities", {})
+    trend_lower = trend_str.lower()
+
+    # First pass: exact match on trend_key
+    for qname, qinfo in quantities.items():
+        if qinfo.get("trend_key", "").lower() == trend_lower:
+            return qname, qinfo
+
+    # Second pass: keyword match (covers both increases_X and decreases_X
+    # sharing the same quantity type)
+    for qname, qinfo in quantities.items():
+        # e.g. trend is "increases_frequency", qname is "frequency"
+        if qname.lower() in trend_lower:
+            return qname, qinfo
+        # e.g. trend_key is "decreases_amplitude", trend is "increases_amplitude"
+        trend_key_lower = qinfo.get("trend_key", "").lower()
+        # extract the noun part after "increases_" / "decreases_"
+        for prefix in ("increases_", "decreases_"):
+            if trend_lower.startswith(prefix) and trend_key_lower.startswith(prefix):
+                if trend_lower[len(prefix):] == trend_key_lower[len(prefix):]:
+                    return qname, qinfo
+
+    return None, None

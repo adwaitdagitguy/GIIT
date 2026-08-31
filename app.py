@@ -38,8 +38,10 @@ import pandas as pd
 from core.model_loader import load_model_from_file, get_model_architecture_summary
 from core.dynamic_intervener import DynamicSciMLIntervener, generate_test_data
 from core.llm_engine import generate_graph_json
+from core.llm_engine import generate_graph_json, generate_physics_ruleset
 from utils.physics_utils import build_node_explanations
 from components.styles import apply_custom_css
+
 
 # ─────────────────────────────────────────────────────────────
 # PAGE CONFIG
@@ -78,10 +80,15 @@ _defaults = {
     "clicked_node":      None,
     "last_click_ts":     None,
     "mapping_results":   None,
-    "alignment_score":   None,
-    "node_explanations": {},
-    "graph_data":        None,
+    "alignment_score":        None,
+    "node_explanations":      {},
+    "graph_data":             None,
+    "seed_sweep_data":        None,
+    "selected_histogram_var": None,
+    "physics_ruleset":        None,   # LLM-generated or user-uploaded ruleset
+    "physics_ruleset_source": None,   # "uploaded" | "suggested"
 }
+
 for key, val in _defaults.items():
     if key not in st.session_state:
         st.session_state[key] = val
@@ -151,18 +158,113 @@ st.markdown("---")
 # SECTION 1.5: Physics Ruleset (Optional)
 # ─────────────────────────────────────────────────────────────
 st.markdown('<div class="section-card">', unsafe_allow_html=True)
-st.subheader("1.5 Upload Physics Ruleset (Optional)")
-rules_file    = st.file_uploader("Upload Physics Ruleset `.json`", type=["json"])
-physics_rules = None
-if rules_file:
-    try:
-        rules_file.seek(0)
-        physics_rules = json.load(rules_file)
-        st.success("Physics rules loaded successfully")
-    except Exception as e:
-        st.error(f"Invalid rules file: {e}")
+st.subheader("1.5 Upload / Suggest Physics Ruleset (Optional)")
+st.markdown(
+    "Provide a physics ruleset that defines **how to compute derived quantities** "
+    "(e.g. frequency via zero-crossings, amplitude via signal range) from the model output. "
+    "This improves parameter-to-layer mapping by scoring both the **magnitude** and "
+    "**direction** of change in the derived quantity."
+)
+
+col_r1, col_r2 = st.columns([1, 1])
+
+with col_r1:
+    st.markdown("##### 📂 Upload Existing Ruleset")
+    rules_file = st.file_uploader("Upload Physics Ruleset `.json`", type=["json"], key="rules_uploader")
+    if rules_file:
+        try:
+            rules_file.seek(0)
+            uploaded_ruleset = json.load(rules_file)
+            st.session_state.physics_ruleset = uploaded_ruleset
+            st.session_state.physics_ruleset_source = "uploaded"
+            st.success(
+                f"✅ Ruleset uploaded — "
+                f"{len(uploaded_ruleset.get('quantities', {}))} quantities defined"
+            )
+        except Exception as e:
+            st.error(f"Invalid rules file: {e}")
+
+with col_r2:
+    st.markdown("##### ✨ Suggest Rules via LLM")
+    st.caption(
+        "Requires the graph.json to be loaded (Section 1). "
+        "The LLM reads `expected_trends` and generates compute functions for each quantity."
+    )
+    ruleset_api_key = st.text_input(
+        "OpenRouter API Key",
+        type="password",
+        key="ruleset_api_key",
+        placeholder="sk-or-...",
+    )
+    if st.button("✨ Suggest Rules via LLM", key="suggest_rules_btn"):
+        _graph = st.session_state.get("graph_data")
+        if not _graph:
+            st.error("⚠️ Load a graph.json (Section 1) before suggesting rules.")
+        elif not ruleset_api_key:
+            st.error("⚠️ Enter your OpenRouter API key above.")
+        elif not _graph.get("expected_trends"):
+            st.warning(
+                "The loaded graph.json has no `expected_trends`. "
+                "Re-generate the graph.json via the LLM (Section 0) to include trend information."
+            )
+        else:
+            with st.spinner("Calling LLM to suggest physics rules…"):
+                try:
+                    suggested = generate_physics_ruleset(
+                        graph=_graph,
+                        api_key=ruleset_api_key,
+                        verbose=False,
+                    )
+                    st.session_state.physics_ruleset = suggested
+                    st.session_state.physics_ruleset_source = "suggested"
+                    n_q = len(suggested.get("quantities", {}))
+                    st.success(f"✅ Ruleset generated — {n_q} quantities defined")
+                except Exception as e:
+                    st.error(f"LLM ruleset generation failed: {e}")
+
+# ── Ruleset status & preview ──────────────────────────────────
+physics_rules = st.session_state.get("physics_ruleset")
+if physics_rules:
+    source_label = st.session_state.get("physics_ruleset_source", "")
+    qnames = list(physics_rules.get("quantities", {}).keys())
+    _badge = "📂 Uploaded" if source_label == "uploaded" else "✨ LLM-Suggested"
+    st.info(
+        f"{_badge} ruleset active for **{physics_rules.get('system', 'Unknown system')}** — "
+        f"Quantities: {', '.join(f'`{q}`' for q in qnames)}"
+    )
+
+    col_prev, col_dl = st.columns([1, 1])
+    with col_prev:
+        with st.expander("📋 Preview Ruleset JSON"):
+            # Show method + trend_key + description per quantity; hide compute_fn for brevity
+            preview = {}
+            for qname, qinfo in physics_rules.get("quantities", {}).items():
+                preview[qname] = {
+                    "method":      qinfo.get("method", ""),
+                    "trend_key":   qinfo.get("trend_key", ""),
+                    "unit":        qinfo.get("unit", ""),
+                    "description": qinfo.get("description", ""),
+                }
+            st.json(preview)
+    with col_dl:
+        st.download_button(
+            "📥 Download ruleset.json",
+            data=json.dumps(physics_rules, indent=2),
+            file_name="physics_ruleset.json",
+            mime="application/json",
+            key="download_ruleset_btn",
+        )
+
+    # Wire to intervener immediately if available
+    _intervener = st.session_state.get("intervener")
+    if _intervener is not None:
+        _intervener.set_physics_ruleset(physics_rules)
+else:
+    physics_rules = None
+
 st.markdown('</div>', unsafe_allow_html=True)
 st.markdown("---")
+
 
 # ─────────────────────────────────────────────────────────────
 # GRAPH CONSTRUCTION
@@ -240,6 +342,8 @@ if model_pt_file and graph_file and st.session_state.intervener is None:
 
         # Initialize the dynamic intervener
         st.session_state.intervener = DynamicSciMLIntervener(model=model, graph=graph_data)
+        if st.session_state.get("physics_ruleset"):
+            st.session_state.intervener.set_physics_ruleset(st.session_state.physics_ruleset)
 
         # Generate test data from graph.json
         t_inp, t_tgt = generate_test_data(graph_data)
@@ -401,6 +505,13 @@ if G.number_of_nodes() > 0:
     selected_node     = st.selectbox("Select Target Node", list(G.nodes))
     intervention_type = st.selectbox("Intervention Type", ["mask", "perturb"])
     strength          = st.slider("Strength", 0.0, 1.0, 0.5, 0.01)
+    intervention_seed = st.number_input(
+        "Perturbation Seed",
+        min_value=0,
+        value=123,
+        step=1,
+        help="Controls the random noise used by perturb interventions.",
+    )
 
     # ── Mapping Resolver ─────────────────────────────────────
     # Build a lookup: physical node label/id → neural layer name
@@ -478,6 +589,7 @@ if st.button("▶ Run Intervention Analysis"):
                     strength=strength,
                     input_tensor=test_inputs,
                     target_tensor=test_targets,
+                    seed=int(intervention_seed),
                 )
                 st.session_state.baseline_metric   = result["baseline_mse"]
                 st.session_state.intervened_metric = result["intervened_mse"]
@@ -555,15 +667,44 @@ if st.button("🔬 Run Full Analysis (L2 + Residual + Sensitivity)"):
 st.markdown("---")
 st.subheader("5. Automated Mapping Layer")
 
-if st.button("🗺 Run Node Mapping"):
+col_meth, col_seed, col_run = st.columns([1.5, 1, 1])
+with col_meth:
+    mapping_method_label = st.selectbox(
+        "Sensitivity Measure",
+        options=["Gradient Sensitivity", "Perturbation Sensitivity (Δu/u)"],
+        index=0,
+        help="Choose between backpropagated gradient magnitude or direct relative output perturbation (Δu/u).",
+        key="mapping_sens_method"
+    )
+    mapping_method = "perturbation" if "Perturbation" in mapping_method_label else "gradient"
+
+with col_seed:
+    mapping_seed = st.number_input(
+        "Perturbation Seed",
+        min_value=0,
+        value=123,
+        step=1,
+        help="Controls the random noise used for repeatable node mapping.",
+    )
+
+with col_run:
+    st.write("")
+    st.write("")
+    run_mapping = st.button("🗺 Run Node Mapping")
+
+if run_mapping:
     intervener  = st.session_state.intervener
     test_inputs = st.session_state.test_inputs
 
     if intervener and test_inputs is not None:
-        with st.spinner("Running systematic perturbation + node mapping..."):
+        if st.session_state.get("physics_ruleset"):
+            intervener.set_physics_ruleset(st.session_state.physics_ruleset)
+        with st.spinner(f"Running systematic node mapping via {mapping_method_label}..."):
             try:
                 result = intervener.generate_mapping_with_confidence(
-                    input_tensor=test_inputs
+                    input_tensor=test_inputs,
+                    seed=int(mapping_seed),
+                    sensitivity_method=mapping_method,
                 )
                 st.session_state.mapping_results = result["mapping"]
                 st.session_state.alignment_score = result["summary"]["alignment_pct"]
@@ -575,17 +716,43 @@ if st.button("🗺 Run Node Mapping"):
 
 if st.session_state.mapping_results:
     st.markdown("#### Mapping Results")
-    df = pd.DataFrame([
-        {
+
+    _active_ruleset = st.session_state.get("physics_ruleset")
+    _has_ruleset_cols = _active_ruleset and any(
+        info.get("quantity_name") is not None
+        for info in st.session_state.mapping_results.values()
+    )
+
+    rows = []
+    for node, info in st.session_state.mapping_results.items():
+        row = {
             "Physical Node": node,
-            "Mapped Layer":  info["layer"],
-            "Confidence":    info["confidence"],
-            "Score":         round(info.get("score", 0), 6),
-            "Note":          info.get("note", ""),
+            "Rank": info.get("rank", 1),
+            "Mapped Layer": info["layer"],
+            "Confidence": info["confidence"],
+            "Score": round(info.get("score", 0), 6),
+            "Strategy": info.get("strategy", ""),
+            "Note": info.get("note", ""),
         }
-        for node, info in st.session_state.mapping_results.items()
-    ])
+        if _has_ruleset_cols:
+            row["Quantity"] = info.get("quantity_name") or "—"
+            dq = info.get("delta_q")
+            row["Δq"] = f"{dq:+.4f}" if dq is not None else "—"
+            dm = info.get("direction_match")
+            row["Dir Match"] = "✅" if dm is True else ("❌" if dm is False else "—")
+            row["Scoring Mode"] = info.get("scoring_mode", "Heuristic")
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
     st.dataframe(df, use_container_width=True)
+
+    if _has_ruleset_cols:
+        st.caption(
+            "**Δq** = change in the derived physical quantity (e.g. Δfrequency, Δamplitude) "
+            "caused by perturbing that layer. "
+            "**Dir Match** = ✅ if the direction of change agrees with the expected trend."
+        )
+
 
 if st.session_state.alignment_score is not None:
     score = st.session_state.alignment_score
@@ -595,6 +762,145 @@ if st.session_state.alignment_score is not None:
         st.warning(f"Alignment Accuracy: {score:.1f}% ⚠️ — Partial alignment")
     else:
         st.error(f"Alignment Accuracy: {score:.1f}% ❌ — Does not align with physics")
+
+# ─────────────────────────────────────────────────────────────
+# SECTION 5.5: Physical Parameter Seed Sweep & Histograms
+# ─────────────────────────────────────────────────────────────
+st.markdown("---")
+st.subheader("5.5 Seed Sweep for Physical Parameters & Variables")
+st.markdown("""
+Run systematic perturbation sweeps across a range of random seeds to evaluate stability and distributions
+specifically for **physical parameters and causal variables**.
+""")
+
+col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns([1, 1, 1.4, 1, 1.2])
+with col_s1:
+    sweep_start = st.number_input("Start Seed", min_value=0, value=0, step=1, key="sweep_start_seed")
+with col_s2:
+    sweep_end = st.number_input("End Seed", min_value=0, value=20, step=1, key="sweep_end_seed")
+with col_s3:
+    sweep_method_label = st.selectbox(
+        "Sensitivity Measure",
+        options=["Gradient Sensitivity", "Perturbation Sensitivity (Δu/u)"],
+        index=0,
+        key="sweep_sens_method"
+    )
+    sweep_method = "perturbation" if "Perturbation" in sweep_method_label else "gradient"
+with col_s4:
+    sweep_sigma = st.number_input("Perturbation σ", min_value=0.01, max_value=1.0, value=0.1, step=0.01, key="sweep_sigma")
+with col_s5:
+    st.write("")
+    st.write("")
+    run_sweep_btn = st.button("🚀 Run Seed Sweep", key="run_physical_sweep_btn")
+
+if run_sweep_btn:
+    intervener = st.session_state.intervener
+    test_inputs = st.session_state.test_inputs
+    if intervener and test_inputs is not None:
+        if sweep_end < sweep_start:
+            st.error("End Seed must be greater than or equal to Start Seed.")
+        else:
+            with st.spinner(f"Running seed sweep across seeds {sweep_start} to {sweep_end} using {sweep_method_label}..."):
+                try:
+                    sweep_results = intervener.run_physical_seed_sweep(
+                        input_tensor=test_inputs,
+                        start_seed=sweep_start,
+                        end_seed=sweep_end,
+                        sigma=sweep_sigma,
+                        sensitivity_method=sweep_method,
+                    )
+                    st.session_state.seed_sweep_data = sweep_results
+                    st.success(f"✅ Seed sweep completed across {sweep_results['summary']['total_seeds']} seeds ({sweep_method_label})!")
+                except Exception as e:
+                    st.error(f"Seed sweep failed: {e}")
+    else:
+        st.warning("Upload model + graph and ensure backend is initialized.")
+
+# Display Sweep Results & Physical Variables
+if st.session_state.get("seed_sweep_data"):
+    sweep_data = st.session_state.seed_sweep_data
+    p_vars = sweep_data.get("physical_variables", {})
+
+    st.markdown("#### 📐 Physical Parameters / Variables Distribution")
+    st.caption("Click **'📊 View Histogram'** next to any physical parameter or variable to render its distribution across all seeds.")
+
+    for var_name, vinfo in p_vars.items():
+        v_col1, v_col2, v_col3, v_col4 = st.columns([2, 1.5, 1.5, 1.5])
+        with v_col1:
+            st.markdown(f"**{vinfo.get('label', var_name)}** `({vinfo.get('type', 'state')})`")
+            if vinfo.get('description'):
+                st.caption(vinfo['description'][:80])
+        with v_col2:
+            st.markdown(f"**Mean:** `{vinfo.get('mean', 0.0):.4f}`")
+            st.caption(f"Std: `{vinfo.get('std', 0.0):.4f}`")
+        with v_col3:
+            st.markdown(f"**Range:** `[{vinfo.get('min', 0.0):.3f}, {vinfo.get('max', 0.0):.3f}]`")
+            st.caption(f"Median: `{vinfo.get('median', 0.0):.4f}`")
+        with v_col4:
+            if st.button(f"📊 View Histogram", key=f"btn_hist_{var_name}"):
+                st.session_state.selected_histogram_var = var_name
+
+    # Render selected histogram
+    selected_var = st.session_state.get("selected_histogram_var")
+    if selected_var and selected_var in p_vars:
+        chosen = p_vars[selected_var]
+        all_components = sweep_data.get("all_neural_components", list(chosen.get("layer_distribution", {}).keys()))
+        layer_dist = chosen.get("layer_distribution", {})
+        counts = [layer_dist.get(comp, 0) for comp in all_components]
+        total_seeds = sweep_data["summary"]["total_seeds"]
+
+        st.markdown("---")
+        st.markdown(f"### 📊 Neural Component Mapping Distribution: `{chosen.get('label', selected_var)}`")
+        
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            st.info(f"🏆 **Top Mapped Neural Component**: `{chosen.get('top_layer', 'None')}`")
+        with col_m2:
+            pct = (chosen.get("top_layer_count", 0) / total_seeds * 100) if total_seeds > 0 else 0
+            st.success(f"🎯 **Seed Consistency**: `{chosen.get('top_layer_count', 0)}/{total_seeds}` seeds (**{pct:.1f}%**)")
+
+        if len(all_components) > 0:
+            fig, ax = plt.subplots(figsize=(10, 4.5))
+            
+            # Highlight top layer with a distinct color
+            top_comp = chosen.get("top_layer")
+            bar_colors = [
+                "#10b981" if comp == top_comp and layer_dist.get(comp, 0) > 0 else "#3b82f6"
+                for comp in all_components
+            ]
+            
+            bars = ax.bar(all_components, counts, color=bar_colors, edgecolor="#1e40af", alpha=0.85, width=0.65)
+            
+            # Annotate bar values
+            for bar in bars:
+                height = bar.get_height()
+                if height > 0:
+                    ax.annotate(
+                        f"{int(height)}",
+                        xy=(bar.get_x() + bar.get_width() / 2, height),
+                        xytext=(0, 3),
+                        textcoords="offset points",
+                        ha="center",
+                        va="bottom",
+                        fontsize=9,
+                        fontweight="bold",
+                    )
+            
+            ax.set_title(
+                f"Mapping Frequency (Highest Score Node) for '{chosen.get('label', selected_var)}' across {total_seeds} Seeds (Seeds {sweep_data['summary']['start_seed']} to {sweep_data['summary']['end_seed']})",
+                fontsize=12,
+                fontweight="bold"
+            )
+            ax.set_xlabel("Neural Components", fontsize=11, fontweight="bold")
+            ax.set_ylabel("Times Mapped as Highest Score Node", fontsize=11, fontweight="bold")
+            ax.set_ylim(0, max(counts + [1]) * 1.15)
+            ax.set_xticks(range(len(all_components)))
+            ax.set_xticklabels(all_components, rotation=45, ha="right", fontsize=9)
+            ax.grid(axis='y', linestyle=':', alpha=0.6)
+            plt.tight_layout()
+
+            st.pyplot(fig)
+            plt.close(fig)
 
 # ─────────────────────────────────────────────────────────────
 # SECTION 6: Model Performance Metrics

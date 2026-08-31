@@ -1,84 +1,148 @@
 {
+  "metadata": {
+    "system": "1D Damped Harmonic Oscillator",
+    "equation": "m*x'' + c*x' + k*x = 0",
+    "description": "A mass-spring-damper system modeled as a second-order ODE. The PINN takes time t as input and predicts displacement x(t).",
+    "pinn_input": "t (time)",
+    "pinn_output": "x(t) (displacement)"
+  },
   "nodes": [
     {
-      "name": "m",
-      "type": "state",
-      "description": "Inertial resistance to acceleration",
-      "formula": "m*x'' + c*x' + k*x = 0",
-      "term": "m",
-      "variables": {}
+      "id": "m",
+      "label": "Mass",
+      "symbol": "m",
+      "type": "parameter",
+      "unit": "kg",
+      "description": "Inertial resistance to acceleration"
     },
     {
-      "name": "c",
-      "type": "state",
-      "description": "Energy dissipation coefficient (friction)",
-      "formula": "m*x'' + c*x' + k*x = 0",
-      "term": "c",
-      "variables": {}
+      "id": "c",
+      "label": "Damping Coefficient",
+      "symbol": "c",
+      "type": "parameter",
+      "unit": "N*s/m",
+      "description": "Energy dissipation coefficient (friction)"
     },
     {
-      "name": "k",
-      "type": "state",
-      "description": "Restoring force coefficient",
-      "formula": "m*x'' + c*x' + k*x = 0",
-      "term": "k",
-      "variables": {}
+      "id": "k",
+      "label": "Spring Constant",
+      "symbol": "k",
+      "type": "parameter",
+      "unit": "N/m",
+      "description": "Restoring force coefficient"
     },
     {
-      "name": "x",
+      "id": "x",
+      "label": "Displacement",
+      "symbol": "x",
       "type": "output",
-      "description": "System state — what the PINN predicts",
-      "formula": "m*x'' + c*x' + k*x = 0",
-      "term": "x",
-      "variables": { "t": "Time (s)" }
+      "unit": "m",
+      "description": "System displacement predicted by PINN"
     },
     {
-      "name": "x_dot",
-      "type": "state",
-      "description": "First time derivative of displacement",
-      "formula": "m*x'' + c*x' + k*x = 0",
-      "term": "x'",
-      "variables": { "t": "Time (s)" }
+      "id": "x_dot",
+      "label": "Velocity",
+      "symbol": "x_dot",
+      "type": "intermediate",
+      "unit": "m/s",
+      "description": "First time derivative of displacement"
     },
     {
-      "name": "x_ddot",
-      "type": "state",
-      "description": "Second time derivative — driven by ODE balance",
-      "formula": "m*x'' + c*x' + k*x = 0",
-      "term": "x''",
-      "variables": { "t": "Time (s)" }
+      "id": "x_ddot",
+      "label": "Acceleration",
+      "symbol": "x_ddot",
+      "type": "intermediate",
+      "unit": "m/s^2",
+      "description": "Second time derivative of displacement"
     }
   ],
   "edges": [
-    ["m", "x_ddot", 1.0],
-    ["c", "x_dot", 1.0],
-    ["k", "x", 1.0],
-    ["x_dot", "x_ddot", 1.0],
-    ["x", "x_ddot", 1.0],
-    ["x_ddot", "x", 1.0]
-  ],
-  "mapping": {
-    "m": "m",
-    "c": "c",
-    "k": "k",
-    "x": "x",
-    "x_dot": "x_dot",
-    "x_ddot": "x_ddot"
-  },
-  "model_metadata": {
-    "model_name": "DampedOscillatorPINN",
-    "version": "1.0",
-    "architecture": "m, c, k, x, x_dot -> x_ddot (ODE balance)",
-    "formula": "m*x'' + c*x' + k*x = 0",
-    "domain": "Classical Mechanics",
-    "intervention_supported": ["mask", "perturb", "freeze"],
-    "axis_labels": {
-      "x_label": "Time",
-      "x_unit": "seconds",
-      "y_label": "Displacement",
-      "y_unit": "meters",
-      "loss_label": "ODE Residual",
-      "loss_unit": "N^2"
+    {
+      "source": "m",
+      "target": "x_ddot",
+      "label": "scales inertia"
+    },
+    {
+      "source": "c",
+      "target": "x_dot",
+      "label": "damps velocity"
+    },
+    {
+      "source": "k",
+      "target": "x",
+      "label": "restoring force"
+    },
+    {
+      "source": "x_dot",
+      "target": "x_ddot",
+      "label": "feeds into ODE"
+    },
+    {
+      "source": "x",
+      "target": "x_ddot",
+      "label": "feeds into ODE"
+    },
+    {
+      "source": "x_ddot",
+      "target": "x",
+      "label": "integration over time"
     }
-  }
+  ],
+  "input_spec": {
+    "names": ["t"],
+    "dim": 1,
+    "ranges": {
+      "t": [0, 1]
+    }
+  },
+  "output_spec": {
+    "names": ["x"],
+    "dim": 1
+  },
+  "parameters": {
+    "m": {
+      "label": "Mass",
+      "default_value": 1.0,
+      "expected_sensitivity_sign": "+",
+      "trend": "Increasing mass slows decay; amplitude persists longer"
+    },
+    "c": {
+      "label": "Damping Coefficient",
+      "default_value": 4.0,
+      "expected_sensitivity_sign": "-",
+      "trend": "Increasing damping accelerates amplitude decay"
+    },
+    "k": {
+      "label": "Spring Constant",
+      "default_value": 400.0,
+      "expected_sensitivity_sign": "+",
+      "trend": "Increasing spring constant raises natural frequency"
+    }
+  },
+  "residual": {
+    "formula": "m * x_ddot + c * x_dot + k * x",
+    "description": "ODE residual: m*x'' + c*x' + k*x = 0",
+    "derivatives": {
+      "x": {
+        "wrt": ["t"],
+        "order": 0
+      },
+      "x_dot": {
+        "wrt": ["t"],
+        "order": 1,
+        "of": "x"
+      },
+      "x_ddot": {
+        "wrt": ["t"],
+        "order": 2,
+        "of": "x"
+      }
+    }
+  },
+  "expected_trends": {
+    "Damping Coefficient": "decreases_amplitude",
+    "Mass": "increases_amplitude",
+    "Spring Constant": "increases_frequency"
+  },
+  "test_data_generator": "import torch\nimport numpy as np\ndef generate(params):\n    d = 2.0\n    w0 = 20.0\n    t = np.linspace(0, 1, 500)\n    w = np.sqrt(w0**2 - d**2)\n    phi = np.arctan(-d / w)\n    A = 1.0 / (2.0 * np.cos(phi))\n    cos = np.cos(phi + w * t)\n    exp = np.exp(-d * t)\n    x = exp * 2.0 * A * cos\n    return t.reshape(-1, 1), x.reshape(-1, 1)"
 }

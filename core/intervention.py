@@ -142,7 +142,7 @@ class SciMLIntervener:
     ) -> dict:
         """
         Compute d(mean R^2)/dp for each physical parameter p in {m, c, k}.
-        Also checks computed sign vs. analytical expectation (Adwait's Task 3).
+        Also checks computed sign vs. analytical expectation.
         """
         t_rg = t.detach().clone().requires_grad_(True)
         x    = self.model(t_rg)
@@ -162,7 +162,7 @@ class SciMLIntervener:
             allow_unused=True
         )
 
-        # Analytical expected signs (from Adwait's Task 3 — major_tasks3.pdf)
+        # Analytical expected signs
         expected = {
             "m": {
                 "sign"  : "+",
@@ -455,10 +455,10 @@ class SciMLIntervener:
         """
         Automatically discover which PyTorch layer corresponds to which
         physical causal node by comparing perturbation effects against
-        the analytical physics rules supplied by Adwait.
+        the analytical physics rules.
 
         Args:
-            expected_trends : dict from Adwait, e.g.
+            expected_trends : dict of expected trends, e.g.
                               {"Friction"     : "decreases_amplitude",
                                "Mass"         : "increases_amplitude",
                                "Spring"       : "increases_frequency"}
@@ -598,7 +598,7 @@ class SciMLIntervener:
     ) -> dict:
         """
         Runs auto_map_nodes and formats the final mapping dict for
-        Prathmesh's UI, including the alignment accuracy metric.
+        the frontend UI, including the alignment accuracy metric.
 
         Returns:
             {
