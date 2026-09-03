@@ -1,0 +1,63 @@
+# ==============================================================================
+# LaTeX Source & Build Artifacts
+# ==============================================================================
+*.tex
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.pdf
+
+# Markdown drafts of paper/tex files
+checklist,tex.md
+
+# ==============================================================================
+# Python & Bytecode Artifacts
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebooks Checkpoints
+.ipynb_checkpoints/
+
+# ==============================================================================
+# OS & Editor Artifacts
+# ==============================================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ==============================================================================
+# Scratch & Temporary Logs
+# ==============================================================================
+*.tmp
+*.temp
+*.log
+scratch/
+

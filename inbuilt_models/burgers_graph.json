@@ -46,6 +46,22 @@
       "type": "intermediate",
       "unit": "1/(m*s)",
       "description": "Second derivative of velocity with respect to space"
+    },
+    {
+      "id": "uux",
+      "label": "Nonlinear Advection Term",
+      "symbol": "uux",
+      "type": "intermediate",
+      "unit": "m/s^2",
+      "description": "Nonlinear advection term u * u_x in the Burgers PDE"
+    },
+    {
+      "id": "vuxx",
+      "label": "Viscous Diffusion Term",
+      "symbol": "vuxx",
+      "type": "intermediate",
+      "unit": "m/s^2",
+      "description": "Viscous diffusion term nu * u_xx in the Burgers PDE (nu is constant)"
     }
   ],
   "edges": [
@@ -137,6 +153,16 @@
         ],
         "order": 2,
         "of": "u"
+      },
+      "uux": {
+        "type": "custom",
+        "operation": "multiply",
+        "vars": ["u", "u_x"]
+      },
+      "vuxx": {
+        "type": "custom",
+        "operation": "multiply",
+        "vars": ["u_xx"]
       }
     }
   },

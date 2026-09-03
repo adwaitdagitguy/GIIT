@@ -87,6 +87,7 @@ _defaults = {
     "selected_histogram_var": None,
     "physics_ruleset":        None,   # LLM-generated or user-uploaded ruleset
     "physics_ruleset_source": None,   # "uploaded" | "suggested"
+    "intervention_result":    None,
 }
 
 for key, val in _defaults.items():
@@ -496,6 +497,51 @@ with st.sidebar:
             st.rerun()
 
 # ─────────────────────────────────────────────────────────────
+# SECTION 2.5: Custom Quantity Builder
+# ─────────────────────────────────────────────────────────────
+st.markdown("---")
+st.subheader("2.5 🛠️ Custom Quantity Builder")
+st.markdown("Select physical quantities to combine into a new custom observable for sensitivity tracking across mechanisms.")
+
+intervener = st.session_state.get("intervener")
+if intervener is not None:
+    deriv_spec = intervener.residual_spec.get("derivatives", {})
+    available_vars = list(deriv_spec.keys())
+    
+    col_cq1, col_cq2, col_cq3 = st.columns([2, 1, 1.5])
+    with col_cq1:
+        cq_vars = st.multiselect("Select Base Quantities", available_vars, key="cq_vars")
+    with col_cq2:
+        cq_op = st.selectbox("Operation", ["Add (+)", "Multiply (*)"], key="cq_op")
+    with col_cq3:
+        cq_name = st.text_input("Custom Quantity Name", "Q_custom", key="cq_name")
+
+    if st.button("➕ Create Custom Quantity"):
+        if len(cq_vars) < 2:
+            st.warning("Please select at least 2 quantities to combine.")
+        elif cq_name in deriv_spec:
+            st.warning(f"Quantity name '{cq_name}' already exists.")
+        else:
+            op_str = "add" if "Add" in cq_op else "multiply"
+            intervener.residual_spec.setdefault("derivatives", {})[cq_name] = {
+                "type": "custom",
+                "operation": op_str,
+                "vars": cq_vars,
+            }
+            # Also add to graph so it shows up in dropdowns
+            intervener.graph.setdefault("nodes", []).append({
+                "id": cq_name,
+                "label": f"{cq_name} (Custom)",
+                "type": "state",
+                "description": f"Custom quantity combining {cq_vars} via {op_str}"
+            })
+            
+            st.session_state.intervener = intervener
+            st.success(f"Custom quantity **{cq_name}** added successfully! It is now available in all downstream sensitivity checks.")
+else:
+    st.info("Upload a model and graph to define custom quantities.")
+
+# ─────────────────────────────────────────────────────────────
 # SECTION 3: Intervention Configuration
 # ─────────────────────────────────────────────────────────────
 st.markdown("---")
@@ -593,9 +639,10 @@ if st.button("▶ Run Intervention Analysis"):
                 )
                 st.session_state.baseline_metric   = result["baseline_mse"]
                 st.session_state.intervened_metric = result["intervened_mse"]
+                st.session_state.intervention_result = result
                 st.success(
-                    f"Intervention on **{selected_node}** → `{resolved_layer}` complete | "
-                    f"Baseline MSE: {result['baseline_mse']:.4f} → "
+                    f"Intervention on **{selected_node}** -> `{resolved_layer}` complete | "
+                    f"Baseline MSE: {result['baseline_mse']:.4f} -> "
                     f"Intervened MSE: {result['intervened_mse']:.4f}"
                 )
             except Exception as e:
@@ -903,10 +950,261 @@ if st.session_state.get("seed_sweep_data"):
             plt.close(fig)
 
 # ─────────────────────────────────────────────────────────────
-# SECTION 6: Model Performance Metrics
+# SECTION 6: Interactive Custom Plotter
 # ─────────────────────────────────────────────────────────────
 st.markdown("---")
-st.subheader("6. Model Performance Comparison")
+st.subheader("6. 📈 Interactive Diagnostics & Phase-Space Plotter")
+st.markdown("Select custom X and Y axes to inspect model predictions, analytical ground truth, physical derivatives, and point-wise residuals.")
+
+intervener = st.session_state.intervener
+test_inputs = st.session_state.test_inputs
+test_targets = st.session_state.test_targets
+
+if intervener is not None and test_inputs is not None:
+    # 1. Build DataFrame of all available physical observables and tensors
+    with torch.no_grad():
+        base_pred = intervener.model(test_inputs).cpu().numpy()
+        if base_pred.ndim == 1: base_pred = base_pred.reshape(-1, 1)
+    
+    inputs_np = test_inputs.cpu().numpy()
+    if inputs_np.ndim == 1: inputs_np = inputs_np.reshape(-1, 1)
+    plot_df = pd.DataFrame()
+    
+    # Input coordinates
+    in_names = intervener.input_spec.get("names", [f"input_{i}" for i in range(inputs_np.shape[1])])
+    for idx, name in enumerate(in_names):
+        if idx < inputs_np.shape[1]:
+            plot_df[name] = inputs_np[:, idx]
+    plot_df["index"] = np.arange(len(inputs_np))
+
+    # Base Model Output
+    out_names = intervener.output_spec.get("names", [f"output_{i}" for i in range(base_pred.shape[1])])
+    for idx, name in enumerate(out_names):
+        if idx < base_pred.shape[1]:
+            plot_df[f"Base Prediction ({name})"] = base_pred[:, idx]
+
+    # Ground Truth & Error
+    if test_targets is not None:
+        target_np = test_targets.cpu().numpy()
+        if target_np.ndim == 1: target_np = target_np.reshape(-1, 1)
+        for idx, name in enumerate(out_names):
+            if idx < target_np.shape[1] and idx < base_pred.shape[1]:
+                plot_df[f"Ground Truth ({name})"] = target_np[:, idx]
+                plot_df[f"Absolute Error ({name})"] = np.abs(base_pred[:, idx] - target_np[:, idx])
+
+    # Intervened Output
+    if st.session_state.intervention_result and "intervened_pred" in st.session_state.intervention_result:
+        int_pred = st.session_state.intervention_result["intervened_pred"]
+        if int_pred.ndim == 1: int_pred = int_pred.reshape(-1, 1)
+        if int_pred.shape == base_pred.shape:
+            int_layer = st.session_state.intervention_result.get("layer", "layer")
+            for idx, name in enumerate(out_names):
+                plot_df[f"Intervened Output [{int_layer}] ({name})"] = int_pred[:, idx]
+                plot_df[f"Intervention Delta ({name})"] = np.abs(int_pred[:, idx] - base_pred[:, idx])
+
+    # Physical Derivatives & Residuals
+    deriv_spec = intervener.residual_spec.get("derivatives", {})
+    if deriv_spec:
+        try:
+            from core.dynamic_intervener import _compute_derivatives, _evaluate_residual
+            computed_derivs = _compute_derivatives(intervener.model, test_inputs, intervener.input_spec, deriv_spec)
+            for d_name, d_tensor in computed_derivs.items():
+                if d_name != "_input":
+                    d_np = d_tensor.detach().cpu().numpy()
+                    if d_np.ndim == 1: d_np = d_np.reshape(-1, 1)
+                    for d_idx in range(d_np.shape[1]):
+                        suffix = f"_{d_idx}" if d_np.shape[1] > 1 else ""
+                        plot_df[f"Derivative: {d_name}{suffix}"] = d_np[:, d_idx]
+            
+            # Pointwise Residual
+            formula = intervener.residual_spec.get("formula")
+            if formula:
+                var_dict = dict(computed_derivs)
+                var_dict.pop("_input", None)
+                for sym, info in intervener.parameters.items():
+                    var_dict[sym] = float(info.get("default_value", 1.0))
+                pointwise_res = _evaluate_residual(formula, var_dict).detach().cpu().numpy()
+                if pointwise_res.ndim == 1: pointwise_res = pointwise_res.reshape(-1, 1)
+                for r_idx in range(pointwise_res.shape[1]):
+                    suffix = f"_{r_idx}" if pointwise_res.shape[1] > 1 else ""
+                    plot_df[f"Pointwise Physics Residual R{suffix}"] = pointwise_res[:, r_idx]
+                    plot_df[f"Squared Physics Residual R^2{suffix}"] = pointwise_res[:, r_idx] ** 2
+        except Exception:
+            pass
+
+    # Ruleset Derived Quantities
+    ruleset = getattr(intervener, "physics_ruleset", None) or st.session_state.get("physics_ruleset")
+    if ruleset and "quantities" in ruleset:
+        try:
+            from utils.physics_utils import compute_derived_quantity
+            t_eval = inputs_np[:, 0]
+            x_eval = base_pred[:, 0]
+            for q_name, q_info in ruleset["quantities"].items():
+                unit_str = f" [{q_info.get('unit', '')}]" if q_info.get('unit') else ""
+                val = compute_derived_quantity(ruleset, q_name, t_eval, x_eval)
+                if val is not None:
+                    # Provide constant metric line across the domain for comparison
+                    plot_df[f"Ruleset: {q_name}{unit_str}"] = float(val)
+        except Exception:
+            pass
+
+    # 2. Plot Controls
+    col_preset, col_type = st.columns([2, 1])
+    with col_preset:
+        preset = st.selectbox(
+            "⚡ Quick Presets",
+            options=["Custom Selection", "Trajectory: Ground Truth vs. Predictions", "Phase Portrait: Displacement vs. Velocity", "Physics Residual Profile"],
+            index=0
+        )
+    with col_type:
+        plot_options = ["Line Plot", "Scatter Plot"]
+        if len(in_names) > 1:
+            plot_options.extend(["3D Scatter Plot", "3D Surface Plot"])
+        plot_type = st.radio("Plot Mode", options=plot_options, horizontal=True)
+        is_3d = "3D" in plot_type
+
+    available_cols = list(plot_df.columns)
+    
+    # Configure default X and Y based on preset
+    default_x = in_names[0] if in_names[0] in available_cols else available_cols[0]
+    default_y = [c for c in available_cols if "Prediction" in c or "Ground Truth" in c]
+    if not default_y:
+        default_y = [available_cols[1]] if len(available_cols) > 1 else [available_cols[0]]
+
+    if preset == "Trajectory: Ground Truth vs. Predictions":
+        default_x = in_names[0] if in_names[0] in available_cols else available_cols[0]
+        default_y = [c for c in available_cols if "Prediction" in c or "Ground Truth" in c or "Intervened" in c]
+    elif preset == "Phase Portrait: Displacement vs. Velocity":
+        x_candidates = [c for c in available_cols if "Prediction" in c or "x" == c]
+        v_candidates = [c for c in available_cols if "x_dot" in c or "Velocity" in c or "Derivative: x_dot" in c]
+        if x_candidates and v_candidates:
+            default_x = x_candidates[0]
+            default_y = [v_candidates[0]]
+            if not is_3d:
+                plot_type = "Scatter Plot"
+    elif preset == "Physics Residual Profile":
+        default_x = in_names[0] if in_names[0] in available_cols else available_cols[0]
+        default_y = [c for c in available_cols if "Residual" in c]
+
+    if is_3d:
+        col_x, col_y_axis, col_z = st.columns([1, 1, 2])
+        with col_x:
+            chosen_x = st.selectbox("Select X-Axis", options=available_cols, index=available_cols.index(default_x) if default_x in available_cols else 0)
+        with col_y_axis:
+            default_y_3d = in_names[1] if (len(in_names) > 1 and in_names[1] in available_cols) else available_cols[1]
+            chosen_y_3d = st.selectbox("Select Y-Axis", options=available_cols, index=available_cols.index(default_y_3d) if default_y_3d in available_cols else 1)
+        with col_z:
+            valid_defaults = [y for y in default_y if y in available_cols]
+            chosen_z = st.multiselect("Select Z-Axis (Values, Multiple Allowed)", options=available_cols, default=valid_defaults if valid_defaults else [available_cols[0]])
+            show_grid = st.checkbox("Show Gridlines", value=True)
+            chosen_y = chosen_z  # map for reuse
+        
+        # 3D Angle / View Rotation Controls
+        rot_col1, rot_col2 = st.columns(2)
+        with rot_col1:
+            azim_angle = st.slider("🔄 Azimuth Rotation (Horizontal Orbit)", min_value=-180, max_value=180, value=-60, step=5)
+        with rot_col2:
+            elev_angle = st.slider("📐 Elevation Angle (Vertical Tilt)", min_value=-90, max_value=90, value=30, step=5)
+    else:
+        col_x, col_y = st.columns([1, 2])
+        with col_x:
+            chosen_x = st.selectbox("Select X-Axis", options=available_cols, index=available_cols.index(default_x) if default_x in available_cols else 0)
+            use_log_y = st.checkbox("Log scale Y-axis", value=False)
+            show_grid = st.checkbox("Show Gridlines", value=True)
+        with col_y:
+            valid_defaults = [y for y in default_y if y in available_cols]
+            chosen_y = st.multiselect("Select Y-Axis (Multiple Allowed)", options=available_cols, default=valid_defaults if valid_defaults else [available_cols[0]])
+
+    # 3. Render Plot
+    if chosen_x and chosen_y:
+        palette = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#475569"]
+        
+        if is_3d:
+            fig = plt.figure(figsize=(10, 6.5))
+            ax = fig.add_subplot(111, projection='3d')
+            
+            for idx, z_col in enumerate(chosen_z):
+                color = palette[idx % len(palette)]
+                if "Surface" in plot_type:
+                    try:
+                        ax.plot_trisurf(plot_df[chosen_x], plot_df[chosen_y_3d], plot_df[z_col], alpha=0.75, linewidth=0.2, antialiased=True)
+                    except Exception as e:
+                        st.warning(f"Could not triangulate surface for {z_col}. Falling back to 3D Scatter. (Error: {e})")
+                        ax.scatter(plot_df[chosen_x], plot_df[chosen_y_3d], plot_df[z_col], c=color, label=z_col, s=15, alpha=0.7)
+                else:
+                    ax.scatter(plot_df[chosen_x], plot_df[chosen_y_3d], plot_df[z_col], c=color, label=z_col, s=15, alpha=0.7)
+            
+            ax.set_xlabel(chosen_x, fontsize=10, fontweight="bold")
+            ax.set_ylabel(chosen_y_3d, fontsize=10, fontweight="bold")
+            
+            out_label = ", ".join(out_names) if ('out_names' in locals() and out_names) else "output"
+            if len(chosen_z) == 1:
+                z_label_str = chosen_z[0]
+            elif all("Prediction" in col or "Ground Truth" in col or "Intervened" in col for col in chosen_z):
+                z_label_str = f"System State ({out_label})"
+            elif all("Derivative" in col for col in chosen_z):
+                z_label_str = "Derivative Value"
+            else:
+                z_label_str = "Value"
+            
+            ax.set_zlabel(z_label_str, fontsize=10, fontweight="bold")
+            ax.view_init(elev=elev_angle, azim=azim_angle)
+                
+            ax.set_title(f"3D Plot: {', '.join(chosen_z)} vs. ({chosen_x}, {chosen_y_3d}) [Elev: {elev_angle}°, Azim: {azim_angle}°]", fontsize=12, fontweight="bold")
+            if "Scatter" in plot_type:
+                ax.legend(loc="best", fontsize=9, framealpha=0.9)
+                
+            plt.tight_layout()
+            st.pyplot(fig)
+            plt.close(fig)
+            
+        else:
+            fig, ax = plt.subplots(figsize=(10, 4.8))
+            
+            for idx, y_col in enumerate(chosen_y):
+                color = palette[idx % len(palette)]
+                if plot_type == "Line Plot":
+                    sorted_df = plot_df.sort_values(by=chosen_x)
+                    ax.plot(sorted_df[chosen_x], sorted_df[y_col], label=y_col, color=color, linewidth=2.0, alpha=0.9)
+                else:
+                    ax.scatter(plot_df[chosen_x], plot_df[y_col], label=y_col, color=color, s=25, alpha=0.75, edgecolors='none')
+
+            ax.set_xlabel(chosen_x, fontsize=11, fontweight="bold")
+            
+            out_label = ", ".join(out_names) if ('out_names' in locals() and out_names) else "output"
+            if len(chosen_y) == 1:
+                y_label_str = chosen_y[0]
+            elif all("Prediction" in col or "Ground Truth" in col or "Intervened" in col for col in chosen_y):
+                y_label_str = f"System State / Response ({out_label})"
+            elif all("Derivative" in col for col in chosen_y):
+                y_label_str = "Physical Derivative Value"
+            elif all("Residual" in col for col in chosen_y):
+                y_label_str = "Physics Residual Magnitude"
+            elif all("Error" in col or "Delta" in col for col in chosen_y):
+                y_label_str = "Error / Discrepancy"
+            else:
+                y_label_str = " / ".join(chosen_y[:2]) + ("..." if len(chosen_y) > 2 else "")
+
+            ax.set_ylabel(y_label_str, fontsize=11, fontweight="bold")
+            if use_log_y:
+                ax.set_yscale("log")
+            if show_grid:
+                ax.grid(True, linestyle=":", alpha=0.6)
+            
+            ax.set_title(f"Custom Diagnostic Plot: {', '.join(chosen_y)} vs. {chosen_x}", fontsize=12, fontweight="bold")
+            ax.legend(loc="best", fontsize=9, framealpha=0.9)
+            plt.tight_layout()
+
+            st.pyplot(fig)
+            plt.close(fig)
+else:
+    st.info("💡 Initialize the model backend and load data in Sections 1–4 to enable custom plotting.")
+
+# ─────────────────────────────────────────────────────────────
+# SECTION 7: Model Performance Metrics
+# ─────────────────────────────────────────────────────────────
+st.markdown("---")
+st.subheader("7. Model Performance Comparison")
 
 colX, colY = st.columns(2)
 with colX:
@@ -928,3 +1226,4 @@ if st.button("🔄 Reset Session"):
     for key in _defaults:
         st.session_state[key] = _defaults[key]
     st.rerun()
+

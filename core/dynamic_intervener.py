@@ -105,6 +105,21 @@ def _compute_derivatives(model, input_tensor, input_spec, deriv_spec):
         wrt_list = dinfo.get("wrt", [])
         source_var = dinfo.get("of", None)  # What to differentiate (None = model output)
 
+        if dinfo.get("type") == "custom":
+            op = dinfo.get("operation", "add")
+            vars_to_combine = dinfo.get("vars", [])
+            if len(vars_to_combine) > 0 and all(v in computed for v in vars_to_combine):
+                result = computed[vars_to_combine[0]]
+                for v in vars_to_combine[1:]:
+                    if op == "add":
+                        result = result + computed[v]
+                    elif op == "multiply":
+                        result = result * computed[v]
+                computed[var_name] = result
+            else:
+                computed[var_name] = output  # Fallback
+            continue
+
         if order == 0:
             # This is just the raw model output (or a reference)
             computed[var_name] = output
@@ -861,7 +876,7 @@ class DynamicSciMLIntervener:
                     change_sign = "~0"
                 # Direction match for ruleset mode
                 if using_ruleset_for_node and change is not None:
-                    dir_match = "[Y]" if (expected_direction * change > 0) else "[N]"
+                    dir_match = "✓" if (expected_direction * change > 0) else "✗"
                 else:
                     dir_match = "n/a"
                 print(
@@ -926,8 +941,8 @@ class DynamicSciMLIntervener:
                     "[AMBIG]" if info["confidence"] == "Ambiguous" else "[LOW]"
                 )
             )
-            dir_tag = "[Y]" if info["direction_match"] is True else (
-                "[N]" if info["direction_match"] is False else "n/a"
+            dir_tag = "✓" if info["direction_match"] is True else (
+                "✗" if info["direction_match"] is False else "n/a"
             )
             print(f"  {node:<22}  {info['layer']:<32}  {conf_tag:<12}  {dir_tag:<10}  {info['note']}")
         print("=" * 60)
@@ -1086,7 +1101,7 @@ class DynamicSciMLIntervener:
 
         # ── Strategy 2: Sensitivity Mapping for Physical Nodes ────────────────
         is_perturb = (sensitivity_method.lower() == "perturbation")
-        method_label = "Perturbation (delta_u/u)" if is_perturb else "Gradient"
+        method_label = "Perturbation (Δu/u)" if is_perturb else "Gradient"
         print(f"\n  [Strategy 2] Sensitivity Mapping for Physical Nodes ({method_label})...")
         already_mapped_labels = set(mapping.keys())
 
@@ -1141,8 +1156,8 @@ class DynamicSciMLIntervener:
                 ],
             }
 
-            col_hdr = "delta_u/u" if is_perturb else "abs(grad)"
-            print(f"\n    [OK] {node_label:22s} -> {best_layer:30s}  [{confidence}]  rank={rank}  score={best_score:.6f} raw={raw_score:.2e}")
+            col_hdr = "Δu/u" if is_perturb else "abs(grad)"
+            print(f"\n    [OK] {node_label:22s} → {best_layer:30s}  [{confidence}]  rank={rank}  score={best_score:.6f} raw={raw_score:.2e}")
             print(f"      {'Rank':<4} {'Layer':<30} {col_hdr:>12}")
             for rnk, (layer_name, score) in enumerate(ranked_layers, start=1):
                 print(f"      {rnk:<4} {layer_name:<30} {abs(score):>12.6e}")
@@ -1380,4 +1395,6 @@ class DynamicSciMLIntervener:
             "intervened_mse": intervened_mse,
             "delta": delta,
             "percent_change": pct_change,
+            "baseline_pred": baseline_pred.detach().cpu().numpy(),
+            "intervened_pred": intervened_pred.detach().cpu().numpy(),
         }

@@ -39,6 +39,9 @@ regimes, we find that extrapolating neural states suffer representation collapse
 Specifically, while the model achieves $1.13\%$ $L_2$ error in-distribution, temporal extrapolation causes 
 predictive error to explode ($>2000\%$), physical residuals to jump three orders of magnitude, and parameter sensitivities to invert sign, 
 revealing mechanistic failure modes invisible to standard in-distribution metrics.
+
+\vspace{0.5em}
+\noindent\textbf{Keywords:} Physics-Informed Neural Networks, Mechanistic Interpretability, Scientific Machine Learning, Representation Analysis, Intervention-Based Interpretability, Out-of-Distribution Generalization, Physical Reasoning
 \end{abstract}
 
 \section{Introduction}
@@ -138,7 +141,7 @@ The layer with maximal $S_{\mathrm{grad}}$ is assigned to $n$.
 
 \textbf{Parameters (trend-based intervention).} For a physical parameter
 with a known qualitative effect, we apply a controlled tensor intervention
-$W_\ell' = (1+\epsilon)W_\ell$, run a full forward pass, and measure the
+$W_\ell' = (1+\epsilon)W_\ell$ (where the injected perturbation $\epsilon = \sigma|\mathcal{N}(0, 1)| \ge 0$ is strictly positive to preserve unambiguous directional trend evaluation), run a full forward pass, and measure the
 relative change in the target observable,
 \begin{equation}
 S_{\mathrm{pert}} = \frac{|q(W_\ell') - q(W_\ell)|}{|q(W_\ell)| + \delta}.
@@ -187,8 +190,8 @@ while the OOD transfer regime tests temporal extrapolation over $t \in [1, 2]$.
 \toprule
 Regime & Pred.\ $L_2$ error & Physics residual & Mech.\ consistency \\
 \midrule
-ID ($t \in [0, 1]$)  & $1.13\%$ & $2.007\times10^{2}$ & \checkmark (Passes $L_2 \le 5\%$, mapping identified) \\
-OOD ($t \in [1, 2]$) & $2007.34\%$ & $1.317\times10^{5}$ & $\times$ (Severe decoupling, sign inversion) \\
+ID ($t \in [0, 1]$)  & $1.13\%$ & $2.007\times10^{2}$ &  (Passes $L_2 \le 5\%$, mapping identified) \\
+OOD ($t \in [1, 2]$) & $2007.34\%$ & $1.317\times10^{5}$ &  (Severe decoupling, sign inversion) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -277,6 +280,9 @@ Spring Constant ($k$)       & $+$ & $+111.77$  & $+458.12$ \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\subsection{Supplementary Material}
+Anonymized code and ruleset specifications for the viscous Burgers' equation system are provided in a \texttt{.zip} archive as supplementary material.
 
 \end{document}
 

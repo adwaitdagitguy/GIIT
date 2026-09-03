@@ -1,0 +1,165 @@
+{
+  "id": {
+    "l2_pct": 100.24604797363281,
+    "residual_norm": 0.00019146021804772317,
+    "sensitivity": {
+      "nu": {
+        "gradient": -1.7056230306625366,
+        "computed_sign": "-",
+        "expected_sign": "-",
+        "consistent": true
+      }
+    },
+    "consistency": {
+      "Kinematic Viscosity": {
+        "top_layer": "fch.5.0.weight",
+        "top_count": 19,
+        "total_seeds": 20,
+        "consistency_%": 95.0
+      },
+      "Velocity Field": {
+        "top_layer": "fch.5.0.weight",
+        "top_count": 7,
+        "total_seeds": 20,
+        "consistency_%": 35.0
+      },
+      "Temporal Gradient": {
+        "top_layer": "fch.3.0.weight",
+        "top_count": 5,
+        "total_seeds": 20,
+        "consistency_%": 25.0
+      },
+      "Spatial Gradient": {
+        "top_layer": "fch.5.0.weight",
+        "top_count": 5,
+        "total_seeds": 20,
+        "consistency_%": 25.0
+      },
+      "Spatial Laplacian": {
+        "top_layer": "fcs.0.bias",
+        "top_count": 11,
+        "total_seeds": 20,
+        "consistency_%": 55.0
+      },
+      "Nonlinear Advection Term": {
+        "top_layer": "fch.5.0.weight",
+        "top_count": 9,
+        "total_seeds": 20,
+        "consistency_%": 45.0
+      },
+      "Viscous Diffusion Term": {
+        "top_layer": "fcs.0.bias",
+        "top_count": 11,
+        "total_seeds": 20,
+        "consistency_%": 55.0
+      }
+    }
+  },
+  "ood": {
+    "l2_pct": 99.90177154541016,
+    "residual_norm": 0.028114743530750275,
+    "sensitivity": {
+      "nu": {
+        "gradient": -73.57547760009766,
+        "computed_sign": "-",
+        "expected_sign": "-",
+        "consistent": true
+      }
+    },
+    "consistency": {
+      "Kinematic Viscosity": {
+        "top_layer": "fch.5.0.weight",
+        "top_count": 19,
+        "total_seeds": 20,
+        "consistency_%": 95.0
+      },
+      "Velocity Field": {
+        "top_layer": "fch.6.0.weight",
+        "top_count": 8,
+        "total_seeds": 20,
+        "consistency_%": 40.0
+      },
+      "Temporal Gradient": {
+        "top_layer": "fch.1.0.weight",
+        "top_count": 5,
+        "total_seeds": 20,
+        "consistency_%": 25.0
+      },
+      "Spatial Gradient": {
+        "top_layer": "fch.3.0.weight",
+        "top_count": 6,
+        "total_seeds": 20,
+        "consistency_%": 30.0
+      },
+      "Spatial Laplacian": {
+        "top_layer": "fcs.0.weight",
+        "top_count": 6,
+        "total_seeds": 20,
+        "consistency_%": 30.0
+      },
+      "Nonlinear Advection Term": {
+        "top_layer": "fch.5.0.weight",
+        "top_count": 7,
+        "total_seeds": 20,
+        "consistency_%": 35.0
+      },
+      "Viscous Diffusion Term": {
+        "top_layer": "fcs.0.weight",
+        "top_count": 6,
+        "total_seeds": 20,
+        "consistency_%": 30.0
+      }
+    }
+  },
+  "stability": {
+    "Kinematic Viscosity": {
+      "id_top": "fch.5.0.weight",
+      "ood_top": "fch.5.0.weight",
+      "id_pct": 95.0,
+      "ood_pct": 95.0,
+      "stable": true
+    },
+    "Nonlinear Advection Term": {
+      "id_top": "fch.5.0.weight",
+      "ood_top": "fch.5.0.weight",
+      "id_pct": 45.0,
+      "ood_pct": 35.0,
+      "stable": true
+    },
+    "Spatial Gradient": {
+      "id_top": "fch.5.0.weight",
+      "ood_top": "fch.3.0.weight",
+      "id_pct": 25.0,
+      "ood_pct": 30.0,
+      "stable": false
+    },
+    "Spatial Laplacian": {
+      "id_top": "fcs.0.bias",
+      "ood_top": "fcs.0.weight",
+      "id_pct": 55.0,
+      "ood_pct": 30.0,
+      "stable": false
+    },
+    "Temporal Gradient": {
+      "id_top": "fch.3.0.weight",
+      "ood_top": "fch.1.0.weight",
+      "id_pct": 25.0,
+      "ood_pct": 25.0,
+      "stable": false
+    },
+    "Velocity Field": {
+      "id_top": "fch.5.0.weight",
+      "ood_top": "fch.6.0.weight",
+      "id_pct": 35.0,
+      "ood_pct": 40.0,
+      "stable": false
+    },
+    "Viscous Diffusion Term": {
+      "id_top": "fcs.0.bias",
+      "ood_top": "fcs.0.weight",
+      "id_pct": 55.0,
+      "ood_pct": 30.0,
+      "stable": false
+    }
+  }
+}
