@@ -205,7 +205,7 @@ In the representative run, perturbation mapping identifies hidden tensors associ
 Evaluating the frozen ID mapping under the OOD regime ($t \in [1, 2]$) reveals significant mechanistic divergence.
 As shown in Table~\ref{tab:main}, while the model achieves low predictive error in-distribution, its OOD predictive error explodes ($L_2 = 2007.34\%$), and the physics residual norm increases by nearly three orders of magnitude ($1.317\times10^5$).
 More critically, internal sensitivity signs invert under extrapolation: $\frac{\partial R}{\partial m}$ becomes negative ($-1747.92$) and $\frac{\partial R}{\partial c}$ becomes positive ($+579.62$), directly violating governing physical intuition. 
-Furthermore, re-running auto-mapping in the OOD regime demonstrates that the distinct internal correspondences identified for physical parameters become less separable under temporal extrapolation, with parameters collapsing onto a single tensor (\texttt{fch.0.0.weight}).
+Furthermore, re-running auto-mapping in the OOD regime demonstrates that mass and damping mappings collapse to a shared early-layer tensor (\texttt{fch.0.0.weight}), while the spring-constant mapping shifts to a neighboring early layer (\texttt{fch.1.0.weight}).
 This directly answers our central question: learned physical correspondences do \emph{not} automatically transfer OOD, demonstrating that PINNs can satisfy numerical loss objectives in-distribution while failing to form robust, generalizable internal representations.
 
 \section{Discussion and Limitations}
@@ -259,7 +259,7 @@ Acceleration ($\ddot{x}$)   & \texttt{fch.0.0.weight} & 16/21 (76.2\%) & \texttt
 \paragraph{Key Observations from Multi-Seed Sweep:}
 \begin{itemize}
     \item \textbf{Derivative Localization Stability}: Physical derivative states exhibit high consistency in-distribution. Velocity ($\dot{x}$) and Acceleration ($\ddot{x}$) map to the first hidden block (\texttt{fch.0.0.weight}) in 81.0\% and 76.2\% of seeds, respectively.
-    \item \textbf{OOD Representation Collapse}: Under out-of-distribution temporal extrapolation ($t \in [1, 2]$), both Mass and Damping collapse into the identical component (\texttt{fch.0.0.weight} in 76.2\% of seeds), demonstrating that the network's internal capacity to distinguish independent physical parameters degrades outside the training envelope.
+    \item \textbf{OOD Representation Reorganization}: Under out-of-distribution temporal extrapolation ($t \in [1, 2]$), mass and damping mappings collapse to a shared early-layer tensor (\texttt{fch.0.0.weight} in 76.2\% of seeds), while the spring-constant mapping shifts to a neighboring early layer (\texttt{fch.1.0.weight} in 57.1\% of seeds), demonstrating that the network's internal capacity to distinguish independent physical parameters degrades outside the training envelope.
 \end{itemize}
 
 \subsection{Analytical Physics Residual Sensitivities}

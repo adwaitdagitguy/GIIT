@@ -1227,6 +1227,7 @@ class DynamicSciMLIntervener:
                 "scores": [],
                 "raw_scores": [],
                 "mapped_layers": [],
+                "direction_matches": [],
                 "metric_name": "Mapping Alignment Score",
             }
 
@@ -1243,6 +1244,7 @@ class DynamicSciMLIntervener:
                     "scores": [],
                     "raw_scores": [],
                     "mapped_layers": [],
+                    "direction_matches": [],
                     "metric_name": "Sensitivity Gradient dR/dp",
                 }
 
@@ -1267,11 +1269,15 @@ class DynamicSciMLIntervener:
                     vdata["scores"].append(score)
                     vdata["raw_scores"].append(raw_score)
                     vdata["mapped_layers"].append(layer)
+                    vdata["direction_matches"].append(
+                        matched_info.get("direction_match")
+                    )
                 else:
                     # If not in mapping, check if it has a perturbation or signature fallback
                     vdata["scores"].append(0.0)
                     vdata["raw_scores"].append(0.0)
                     vdata["mapped_layers"].append("None")
+                    vdata["direction_matches"].append(None)
 
         # Get all neural component names
         all_neural_components = list(self.model.state_dict().keys())
