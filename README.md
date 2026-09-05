@@ -96,7 +96,8 @@ Once started, open `http://localhost:8501` in your browser.
 To reproduce all quantitative metrics, sensitivity values, and in-distribution versus out-of-distribution transfer analyses reported in the manuscript, execute:
 
 ```bash
-python reproduce_all_paper_experiments.py
+python burgers_temporal_experiment.py
+python dho_temporal_experiment.py
 ```
 
 ---
