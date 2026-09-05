@@ -28,7 +28,7 @@ Rather than evaluating a network solely by its training loss or residual error, 
 
 ---
 
-## Repository Structure
+## Repository Structure (can be slightly different)
 
 ```text
 app/
