@@ -57,7 +57,7 @@ app/
 
 ### 1. Requirements and Installation
 
-Ensure Python 3.10 or newer is installed. Install the necessary dependencies:
+Ensure Python 3.10 or newer is installed. Install the necessary dependencies: [refer req.txt]
 
 ```bash
 pip install torch numpy matplotlib streamlit streamlit-agraph networkx pandas
@@ -102,6 +102,3 @@ python dho_temporal_experiment.py
 
 ---
 
-## License
-
-This project is available for academic and research purposes.
