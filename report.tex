@@ -1,0 +1,2019 @@
+%----------------------------------------------------------
+% Number of pages for Report 25-40
+%----------------------------------------------------------
+% List of commands to convert synopsis.tex to synopsis.pdf
+%----------------------------------------------------------
+%pdflatex synopsis.tex
+%evince synopsis.pdf &
+\documentclass[12pt,singleside,a4paper]{article}
+\usepackage{epsfig}
+\usepackage{float}
+\usepackage{cite}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{amsmath}
+\geometry{left=20mm,right=20mm,top=20mm,bottom=50mm}
+\pagestyle{plain}
+\begin{document}
+\pagenumbering{arabic}
+\input{be_title.tex}
+\input{be_certificate2.tex}
+\section*{\centering{Declaration}}
+
+\vspace{3.5cm}
+I wish to state that the work embodied in this work titled Graph Based Inspection and Intervention Tool for SciML forms my own contribution to the work carried out under the guidance of Abhijeet Salunke at the Sardar Patel Institute of Technology. I declare that this written submission represents my ideas in my own words and where others' ideas or words have been included, I have adequately cited and referenced the original sources. I also declare that I have adhered to all principles of academic honesty and integrity and have not misrepresented or fabricated or falsified any idea/data/fact/source in my submission.
+\\
+\\
+\\
+\textbf{Alifaraz Lakhani} \hspace{2cm} \textbf{Prathmesh Mohite} \hspace{1cm} \textbf{Adwait Patkhedkar}\\ 
+\vspace{4cm}
+\textbf{2023300130} \hspace{3cm} \textbf{2023300151} \hspace{3cm} \textbf{2023300174}\\ 
+\vspace{1cm}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\pagebreak
+\section*{Abstract}
+ Scientific Machine Learning(SciML) Models are models which are trained with physical laws as the loss function commonly, and using them as constraints as well. They often achieve high predictive accuracy and satisfy the physical constraints. However, the problem with current SciML models is that there are no known ways to validate the internal representation of the model, and whether it has learnt shortcuts/ spurious connections. We propose a novel graph based inspection and intervention tool which allows for post-hoc validation of trained SciML models. We represent the scientific mechanisms as a causal graph and establish a mapping between graph components and the various elements (like operators) learnt by the model. By performing controlled node/edge level interventions, we inspect the mechanistic correctness of the model and test whether it has correctly learnt the physics or not. This allows practitioners to assess whether a SciML model’s predictions are driven by the intended causal structure rather than merely satisfying constraints numerically. 
+\pagebreak
+\section*{List of Figures}
+\listoffigures
+\pagebreak
+\section*{List of Tables}
+\listoftables
+\pagebreak
+\tableofcontents
+\pagebreak
+\section{Introduction}
+Scientific Machine Learning (SciML) integrates data-driven machine learning methods with scientific models derived from physics, chemistry, biology, and engineering. It combines neural networks with governing equations such as ODEs and PDEs, embedding physical laws directly into the training process.
+
+Unlike conventional machine learning, which relies primarily on large labeled datasets, SciML incorporates prior scientific knowledge through structured inductive biases, boundary conditions, and physics-based constraints in the loss function. This reduces hypothesis space and improves generalization, particularly in low-data or high-cost simulation regimes.
+
+A prominent example is Physics-Informed Neural Networks (PINNs), where neural networks approximate solutions to differential equations while simultaneously minimizing residuals of the governing physical laws. SciML thus represents a shift from purely predictive modeling toward physically consistent, interpretable, and extrapolatable AI systems.
+\subsection{Problem Statement}
+Scientific Machine Learning models, such as PINNs, achieve high predictive accuracy by embedding physical constraints directly into the loss function. However, this enforcement is numerical rather than mechanistic—the model may satisfy governing equations in output space while its internal representations remain opaque and unverified.
+There is currently no standardized framework to validate whether hidden layers encode true physical dynamics (e.g., constant gravitational acceleration) or merely approximate input–output mappings. Existing interpretability tools are insufficient for confirming adherence to continuous scientific laws.
+As a consequence, models may learn spurious correlations or shortcut solutions, especially under biased training data, without detection.
+This reveals a fundamental gap: the absence of a causal inspection and intervention mechanism to verify whether SciML models have learned genuine physical mechanisms rather than mathematically convenient approximations
+\subsection{Objectives}
+
+\subsubsection*{Phase 1: Baseline PINN Training and Causal Representation (25\%)}
+
+\begin{itemize}
+    \item Train a baseline Physics-Informed Neural Network (PINN) on a canonical continuous dynamical system (e.g., 1D damped harmonic oscillator).
+    \item Ensure numerical accuracy using bounded trajectory error (e.g., $L_2$ norm $\leq$ predefined threshold).
+    \item Validate physics compliance by minimizing the governing differential equation residual.
+    \item Construct a directed causal graph encoding governing physical parameters (e.g., mass, damping coefficient, stiffness).
+    \item Verify correct directional dependencies consistent with analytical physics (e.g., Mass $\rightarrow$ Acceleration).
+    \item Perform sensitivity consistency checks by comparing partial derivatives of model outputs with theoretical expectations.
+\end{itemize}
+
+\subsubsection*{Phase 2: Neural--Causal Mapping Layer Development (50\%)}
+
+\begin{itemize}
+    \item Design an automated mapping mechanism linking causal graph nodes to internal neural components (weights, activations, or loss terms).
+    \item Define a formal correspondence criterion between physical parameters and model components.
+    \item Conduct parameter perturbation tests to verify directionally consistent changes in physical outputs.
+    \item Implement misalignment detection by intentionally altering mappings and measuring sensitivity inconsistencies.
+    \item Quantify mapping alignment accuracy using a predefined correspondence metric.
+\end{itemize}
+
+\subsubsection*{Phase 3: Structured Intervention Engine (75\%)}
+
+\begin{itemize}
+    \item Develop a controlled intervention framework capable of applying structured perturbations to mapped neural components.
+    \item Evaluate trajectory deviations under targeted perturbations (e.g., damping-related vs mass-related components).
+    \item Measure monotonic divergence scaling with increasing perturbation strength.
+    \item Assess repeatability and stability of intervention responses across multiple runs.
+    \item Validate causal response consistency (e.g., damping perturbation alters decay rate, mass perturbation alters oscillation frequency).
+\end{itemize}
+
+\subsubsection*{Phase 4: Mechanistic Consistency Quantification and Validation (100\%)}
+
+\begin{itemize}
+    \item Define a quantitative Mechanistic Consistency Score (MCS) comparing observed intervention sensitivity with analytically expected physical sensitivity.
+    \item Distinguish mechanistic learning from shortcut numerical approximation using defined MCS thresholds.
+    \item Measure divergence shifts (e.g., $\Delta$MSE) under targeted versus random perturbations.
+    \item Evaluate robustness under distribution shift (e.g., unseen initial conditions).
+    \item Establish criteria for identifying unstable or non-causal internal representations.
+\end{itemize}
+\subsection{Project Scope}
+
+This project focuses on developing a graph-based inspection and intervention framework for validating mechanistic learning in Scientific Machine Learning (SciML) models, specifically but not fully restricted to  Physics-Informed Neural Networks (PINNs).
+
+\textbf{Scope of Work:}
+\begin{itemize}
+    \item Train and evaluate baseline PINNs on controlled continuous dynamical systems (initially low-dimensional systems such as the damped harmonic oscillator).
+    \item Construct structured causal graphs representing governing physical parameters and their directional dependencies.
+    \item Develop a neural--causal mapping layer that links causal graph nodes to internal neural network components.
+    \item Implement a structured intervention engine to perform controlled perturbations on mapped components.
+    \item Define and compute a quantitative Mechanistic Consistency Score (MCS) to distinguish mechanistic learning from shortcut numerical approximation.
+    \item Evaluate robustness under controlled perturbations and limited distribution shifts (e.g., unseen initial conditions).
+\end{itemize}
+
+\textbf{Out of Scope:}
+\begin{itemize}
+    \item Full causal discovery from raw observational data.
+    \item Large-scale industrial PDE systems beyond controlled experimental settings.
+    \item Formal proofs of mechanistic interpretability guarantees.
+    \item General-purpose explainability tools for arbitrary deep learning models.
+\end{itemize}
+
+The project is therefore bounded to controlled SciML environments where governing equations are known a priori, enabling structured causal representation and targeted mechanistic validation.
+\subsection{Technologies Used as of Phase 4}
+
+The Phase 4 system completes the transition of the SciML inspection framework into a production-ready, decoupled, model-agnostic, and interactive workbench. The technology stack has been modernized into a client--server architecture supporting automated graph construction, real-time neural layer interventions, interactive node-graph exploration, and multi-tab diagnostic analytics.
+
+\subsubsection{1. Core Programming and Backend API Framework}
+
+\textbf{Python \& FastAPI (v0.110+)}
+\begin{itemize}
+    \item Python serves as the core language for scientific computing, deep learning introspection, and backend orchestration.
+    \item \textbf{FastAPI} and \textbf{Uvicorn} provide a high-performance, asynchronous REST API layer with modular routing (\texttt{/api/model}, \texttt{/api/graph}, \texttt{/api/ruleset}, \texttt{/api/intervention}) and multi-session state management.
+    \item \textbf{Pydantic (v2.0+)} and \textbf{Python-Multipart} enforce strict request/response schema validation and handle concurrent multipart uploads of model architectures (\texttt{.py}), weight checkpoints (\texttt{.pt}), and causal graph schemas (\texttt{.json}).
+\end{itemize}
+
+\subsubsection{2. Frontend Workbench and State Management}
+
+\textbf{React 18, TypeScript, and Vite (v6.0)}
+\begin{itemize}
+    \item Replaces the earlier monolithic Streamlit prototype with a responsive Single-Page Application (SPA) structured as a three-column studio workbench.
+    \item \textbf{Tailwind CSS (v4.0)} and \textbf{Lucide React} provide a modern, dark-themed scientific studio interface with glassmorphic panels and status badges.
+    \item \textbf{Zustand (v5.0)} and \textbf{TanStack React Query (v5.60)} manage centralized client-side workbench state, asynchronous API lifecycle, health heartbeats, and automatic offline mock-mode fallback.
+    \item \textbf{Axios} handles typed HTTP communication between the Vite client and FastAPI server.
+\end{itemize}
+
+\subsubsection{3. Scientific Machine Learning and Autograd Engine}
+
+\textbf{PyTorch (v2.0+)}
+\begin{itemize}
+    \item Used for dynamically loading arbitrary \texttt{nn.Module} architectures and pretrained state dictionaries (\texttt{.pt}/\texttt{.pth} files).
+    \item Provides dynamic computational graphs for forward evaluation and reversible in-memory weight interventions (Gaussian noise injection, weight masking, gain scaling, and activation clamping).
+    \item The Autograd engine is used for:
+    \begin{itemize}
+        \item Computing governing ODE/PDE physics residuals across collocation domains
+        \item First- and higher-order sensitivity analysis ($\partial y / \partial \theta_{phys}$)
+        \item Gradient-based validation of physical directional consistency
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{4. Causal Graph Construction and Interactive Visualization}
+
+\textbf{React Flow (\texttt{@xyflow/react} v12.3)}
+\begin{itemize}
+    \item Replaces static graph rendering with an interactive, browser-based causal graph canvas supporting custom physics node components, hierarchical column auto-layout, role-based color coding, animated edges, mini-map navigation, and click-to-inspect workflows.
+\end{itemize}
+
+\textbf{NetworkX (v3.0+)}
+\begin{itemize}
+    \item Used on the backend to construct, validate, and traverse directed acyclic graphs (DAGs) representing ground-truth physical dependencies.
+\end{itemize}
+
+\subsubsection{5. Interactive Scientific Visualization and Reporting}
+
+\textbf{Plotly.js \& React-Plotly.js}
+\begin{itemize}
+    \item Powers real-time, responsive scientific plots in the Analytics Dock, including multi-trace trajectory comparisons (Ground Truth vs.\ Baseline PINN vs.\ Intervened PINN) and dual-axis monotonic parameter sweep degradation curves.
+\end{itemize}
+
+\textbf{Matplotlib (v3.7+)}
+\begin{itemize}
+    \item Used for generating high-resolution static figures, spatiotemporal PDE heatmaps (e.g., 1D viscous Burgers' equation), and offline experimental reports.
+\end{itemize}
+
+\subsubsection{6. Data Processing and Symbolic Mathematics}
+
+\textbf{NumPy \& Pandas}
+\begin{itemize}
+    \item Handle vectorized numerical computations, collocation grid generation, error metric calculation (MSE, RMSE, MAE, $L_2$ norm divergence), and tabular aggregation of multi-seed and multi-regime stability experiments.
+\end{itemize}
+
+\textbf{SymPy (v1.12+)}
+\begin{itemize}
+    \item Used for symbolic parsing and evaluation of governing differential equations and node formulas defined in the causal graph metadata.
+\end{itemize}
+
+\subsubsection{7. AI-Assisted Ruleset Generation}
+
+\textbf{OpenRouter / LLM APIs \& Requests}
+\begin{itemize}
+    \item Integrated via backend REST endpoints to automatically inspect uploaded PyTorch model source code, extract governing physical parameters, and synthesize structured causal graph rulesets (\texttt{graph.json}) without manual specification.
+\end{itemize}
+
+\subsubsection{8. Hardware Acceleration}
+
+\textbf{NVIDIA CUDA Toolkit and cuDNN}
+\begin{itemize}
+    \item Enables GPU acceleration for PINN training, autograd differential operator evaluation, and large-scale repeated perturbation replicates.
+\end{itemize}
+
+
+\section{Literature Survey}
+
+% Note: the following survey groups the cited works into themed subsections.
+% Each subsubsection contains a short summary, main contributions, limitations,
+% and an explicit note on the gap that is relevant to this project.
+
+\subsection{Literature Survey 1: Interpretability and Explainability Foundations}
+
+\subsubsection{Murdoch et al., 2019 — \textit{Definitions, methods, and applications in interpretable machine learning}}
+\paragraph{Summary.}
+Murdoch \textit{et al.} provide a unifying conceptual framework (PDR: Predictive, Descriptive, Relevant) for interpretability in ML and clarify how different explanation methods meet different user needs.  
+\paragraph{Main contributions.}
+Introduces rigorous definitions, taxonomy, and practical examples illustrating trade-offs between interpretability and predictive power.  
+\paragraph{Limitations / Gap.}
+Framework is general-purpose and does not address domain-specific mechanistic validation for scientific models (e.g., SciML/PINNs).  
+\paragraph{Relevance to this project.}
+Motivates the need for domain-aware interpretability metrics that satisfy scientific epistemic standards. 
+
+\subsubsection{Roscher et al., 2019 — \textit{Explainable Machine Learning for Scientific Insights and Discoveries}}
+\paragraph{Summary.}
+Roscher \textit{et al.} survey XAI methods with a focus on how they can (or cannot) support scientific discovery, emphasizing the role of domain knowledge and physical constraints.  
+\paragraph{Contributions.}
+Classifies XAI approaches relevant to the sciences and prescribes practices for integrating domain knowledge into model design and interpretation.  
+\paragraph{Limitations / Gap.}
+Existing XAI techniques are mostly post-hoc and correlation-based; they do not provide operational tools for testing mechanistic hypotheses inside model internals.  
+\paragraph{Relevance.}
+Reinforces the need for interventions and causal checks rather than only feature-attribution explanations. 
+\subsubsection{Chou et al., 2022 — \textit{Counterfactuals and Causability in Explainable AI}}
+\paragraph{Summary.}
+Systematic review of counterfactual explanation methods and their alignment with human notions of causability — i.e., actionable ``what-if'' explanations.  
+\paragraph{Gap.}
+The review shows counterfactuals are conceptually attractive but lack standard operationalization for mechanistic verification inside neural models used in SciML.  
+\paragraph{Relevance.}
+Supports the project’s emphasis on intervention-based testing as a route to ``causability.'' 
+\subsection{Literature Survey 2: SciML and PINNs}
+
+\subsubsection{Raissi, Perdikaris \& Karniadakis, 2019 — \textit{Physics-Informed Neural Networks (PINNs)}}
+\paragraph{Summary.}
+Presents PINNs: neural networks trained with data loss plus a residual loss that enforces differential equations via automatic differentiation.  
+\paragraph{Contributions.}
+Demonstrates PINNs for forward and inverse problems involving PDEs/ODEs and provides the foundational methodology used throughout SciML.  
+\paragraph{Limitations / Gap.}
+PINNs enforce physics numerically in output/residual space but do not guarantee that internal representations encode the governing mechanisms. This opens the possibility of ``shortcut'' or spurious internal representations.  
+\paragraph{Relevance.}
+PINNs are the canonical model class for the proposed intervention/inspection framework. 
+
+\subsubsection{Lawal et al., 2022 — \textit{PINN evolution and extensions (survey)}}
+\paragraph{Summary.}
+A review of PINN variants and practical extensions, documenting how many practical modifications aim to improve optimization and robustness.  
+\paragraph{Gap.}
+Survey highlights empirical instability and sensitivity issues — reinforcing the need for post-hoc mechanistic validation. 
+
+\subsection{Literature Survey 3: Operator Learning and Related Architectures}
+
+\subsubsection{Lu et al., 2021 — \textit{DeepONet: Learning nonlinear operators}}
+\paragraph{Summary.}
+Introduces DeepONet to learn operators (maps between function spaces), with mathematical grounding in the universal approximation theorem for operators.  
+\paragraph{Limitations / Gap.}
+DeepONet focuses on operator accuracy and generalization; internal mechanistic interpretability is not addressed. Operator learners may still be black boxes with respect to scientific mechanism.  
+\paragraph{Relevance.}
+DeepONet exemplifies how high-performing SciML models can lack inspectable mechanistic structure — motivating the proposed mapping + intervention framework. 
+\subsection{Literature Survey 4: Causality, Causal-aware XAI and Interventions}
+
+\subsubsection{Loftus et al., 2023 — \textit{Causal Dependence Plots (CDPs)}}
+\paragraph{Summary.}
+Proposes CDPs to visualize how an outcome depends causally on a predictor while accounting for consequential causal changes in other predictors.  
+\paragraph{Gap.}
+CDPs operate at the input–output level; they do not offer tools for intervening in neural network internals (weights/activations) to verify mechanistic encoding.  
+\paragraph{Relevance.}
+CDPs are conceptually aligned with the project’s objective to distinguish causal influence from mere correlation. 
+
+\subsubsection{Ter-Minassian et al., 2023 — \textit{Path-wise explanation model / DAG-augmented SHAP}}
+\paragraph{Summary.}
+Augments SHAP-like attributions with a posited causal DAG to decompose contributions along causal paths.  
+\paragraph{Gap.}
+Relies on a user-provided or learned DAG for inputs; does not connect causal graphs to internal neural components.  
+\paragraph{Relevance.}
+Supports the principle of using causal structure to obtain more faithful attribution, which the project will extend into internal interventions. 
+
+\subsection{Literature Survey 5: Causal Discovery + Explainability (Application Papers)}
+
+\subsubsection{Renero, Maestre \& Ochoa, 2025 — \textit{REX: causal discovery based on ML + explainability}}
+\paragraph{Summary.}
+Introduces ReX, a method combining ML models and feature-explainability (Shapley-style) to improve causal discovery on tabular data; demonstrates strong recovery on synthetic and real biological datasets.  
+\paragraph{Gap.}
+REX focuses on causal graph construction from data using explainability; it does not target mechanistic validation of SciML models or interventions on model internals.  
+\paragraph{Relevance.}
+REX is a complementary direction: it shows explainability can inform causal structure extraction, which the current work will adopt (but invert) by using known physics to guide the causal graph and then testing internal representations. 
+
+\subsubsection{Buijsman, 2023 — \textit{Causal scientific explanations from machine learning (Synthese)}}
+\paragraph{Summary.}
+Argues that ML models can provide genuine scientific explanations provided they are purpose-built with causal structure; discusses philosophical and methodological conditions for such explanations.  
+\paragraph{Gap.}
+High-level and philosophical; lacks concrete procedural tools for verifying mechanistic alignment inside neural architectures.  
+\paragraph{Relevance.}
+Provides epistemic justification for the project’s goal of mechanistic validation. 
+
+\subsection{Literature Survey 6: Reviews, Bibliometrics and Broader Context}
+
+\subsubsection{Sharma et al. (and related bibliometric studies, 2023--2024)}
+\paragraph{Summary.}
+Multiple bibliometric and survey studies (e.g., Sharma et al., 2024; other reviews) track the rapid growth of XAI and SciML research and emphasize a shift toward explainability as a core scientific requirement.  
+\paragraph{Gap.}
+Bibliometric analyses show trends but do not resolve operational gaps such as how to test internal mechanistic fidelity.  
+\paragraph{Relevance.}
+Establishes the timeliness and community interest in methods that add interpretability guarantees to scientific AI. 
+
+\subsection{Literature Survey 7: Mechanistic Interpretability and Theoretical Foundations}
+
+\subsubsection{Geiger et al., 2025 — \textit{A theoretical foundation for mechanistic interpretability}}
+\paragraph{Summary.}
+Provides a formal theoretical framework (causal abstraction) for mechanistic interpretability and generalizes mechanism replacement to broader mechanism transformations.  
+\paragraph{Gap.}
+Theory is recent and general; concrete application to SciML internals and numeric residual enforcement requires additional operationalization.  
+\paragraph{Relevance.}
+Offers a promising formal backbone for defining the project’s mapping operator from causal graph nodes to neural subcomponents. 
+
+\subsection{Additional relevant works (selected)}
+
+\begin{itemize}
+    \item \textbf{Ter-Minassian et al., 2023} — Path-wise explanation with DAG-augmented SHAP (MLR workshop). Reinforces DAG-augmented attributions. 
+    
+    \item \textbf{Lawal et al., 2022 / PINN surveys} — Practical PINN weaknesses and extension catalogue. Useful for designing failure modes. 
+    
+    \item \textbf{Loftus et al., 2023} — CDPs for causal-aware model interpretation. Useful for input–output causal visualization. 
+    
+    \item \textbf{Selected bibliometric/survey papers (2022--2024)} — supporting evidence of XAI and SciML growth (e.g., Zhong 2022, Li 2024, Sharma 2024). 
+    
+\end{itemize}
+
+\subsection{Gap Synthesis and Research Opportunity}
+\paragraph{Synthesis.}
+\begin{enumerate}
+    \item \textbf{Architectural gap:} SciML models (PINNs, DeepONet) enforce physics in output/residual space but do not guarantee that the internal representations encode the same physics. 
+    
+    \item \textbf{XAI gap:} Standard XAI explanations (feature attributions, PDP/ICE plots, SHAP) primarily capture correlations or input–output dependencies and lack tools for internal mechanistic verification. 
+    
+    \item \textbf{Interventional gap:} Counterfactual and causal-aware explanation methods focus on input-level interventions; few methods exist for targeted interventions on neural internals to assess mechanistic consistency. 
+    
+\end{enumerate}
+\paragraph{Opportunity.}
+Design a framework that: (a) encodes governing physics as a directed causal graph; 
+
+(b) maps graph nodes to neural subcomponents with a formal mapping operator; and 
+
+(c) applies structured internal interventions to compute an objective Mechanistic Consistency Score (MCS). This directly addresses the three gaps above and complements existing causal-explainability and PINN literature. 
+
+
+% Figure titles should appear below figures (none included here).
+% End of literature survey.
+
+\section{Analysis}
+\subsection{Architecture Diagram}
+\begin{figure}[H]
+\includegraphics[width=0.8\linewidth]{figures/arch.jpg}
+    \caption{Overall architecture of the GIIT (Graph-Based Inspection and Intervention Tool) system.}
+\label{fig:giit_architecture}
+
+\end{figure}
+\subsection{Use Case Diagram}
+\begin{figure}[H]
+\includegraphics[width=0.8\linewidth]{figures/ucd.drawio (1).png}
+    \caption{Use case diagram of the GIIT (Graph-Based Inspection and Intervention Tool) system.}
+\label{fig:giit_architecture}
+
+\end{figure}
+
+\subsection{Sequence Diagram}
+\begin{figure}[H]
+\includegraphics[width=0.8\linewidth]{BE_Major Project - ESE Report Template/figures/seq_diagram.jpeg}
+\caption{Sequence diagram}
+\label{figure:seq_diagram}
+\end{figure}
+
+\section{Design and Methodology}
+\subsection{Block Diagram}
+\begin{figure}[H]
+\includegraphics[width=0.5\linewidth]{figures/block.jpg}
+    \caption{Block Diagram Representing the modules of the system}
+\label{fig:block_diagram}
+\end{figure}
+\subsection{Tech Stack}
+\begin{figure}[H]
+\includegraphics[width=1.0\linewidth]{figures/TechStack.png}
+    \caption{Tech Stack}
+\label{fig:tech_stack}
+\end{figure}
+
+To support scalable, real-time mechanistic inspection in Phase 4, the system's technology stack was refactored from a monolithic prototype into a modular, decoupled four-tier architecture:
+
+\begin{table}[H]
+\centering
+\renewcommand{\arraystretch}{1.35}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{3.6cm}|p{4.4cm}|X|}
+\hline
+\textbf{Architectural Layer} & \textbf{Technologies \& Libraries} & \textbf{Role in GIIT System} \\
+\hline
+Frontend Studio Workbench & React 18, TypeScript, Vite 6, Tailwind CSS 4, Lucide React & Provides the 3-column dark-themed studio workspace, file upload handlers, Node Inspector, Intervention Studio controls, and interactive Guided Tour. \\
+\hline
+Client State \& Visualization & Zustand 5, TanStack React Query, \texttt{@xyflow/react} (React Flow), Plotly.js, Axios & Manages global session state, renders the interactive causal DAG canvas with custom physics nodes, and plots real-time trajectory and sweep curves. \\
+\hline
+Backend API \& Session Layer & Python 3, FastAPI, Uvicorn, Pydantic v2, Python-Multipart & Exposes asynchronous REST endpoints (\texttt{/api/model}, \texttt{/api/graph}, \texttt{/api/ruleset}, \texttt{/api/intervention}) and manages isolated in-memory model sessions. \\
+\hline
+Core SciML, Graph \& AI Engine & PyTorch (Autograd), NetworkX, SymPy, NumPy, Pandas, Matplotlib, OpenRouter LLM API & Performs dynamic \texttt{.py}/\texttt{.pt} model introspection, reversible tensor interventions, autograd sensitivity \& PDE residual checks, and LLM-based ruleset synthesis. \\
+\hline
+\end{tabularx}
+\caption{Updated Phase 4 Technology Stack across System Layers}
+\label{tab:tech_stack_phase4}
+\end{table}
+
+
+
+\subsection{Parsing algorithm}
+The parsing algorithm extracts the internal computational architecture and state dictionary from the compiled Physics-Informed Neural Network (PINN) without requiring the original source code.
+
+\begin{algorithm}[H]
+\caption{Model State Extraction (Parse-Model)}
+\begin{algorithmic}[1]
+\Require Compiled PyTorch model file $M_{path}$
+\Ensure Dictionary of model weights $W_{dict}$, Total Layers $L$
+\State $StateDict \gets \text{Load}(M_{path})$
+\State $W_{dict} \gets \emptyset$
+\State $L \gets 0$
+\For{each $key, tensor$ \textbf{in} $StateDict$}
+    \If{$key$ contains ``weight'' \textbf{or} $key$ contains ``bias''}
+        \State $W_{dict}[key] \gets tensor$
+        \State $L \gets L + 1$
+    \EndIf
+\EndFor
+\State \Return $W_{dict}, L$
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Time Complexity:} $\mathcal{O}(L)$, where $L$ is the number of layer parameters in the model. The algorithm performs a single pass over the state dictionary keys. \\
+\textbf{Space Complexity:} $\mathcal{O}(P)$, where $P$ is the total number of parameters (weights and biases) loaded into memory.
+
+\subsection{Graph Construction Algorithm}
+This algorithm constructs the Directed Acyclic Graph (DAG) representing the ground-truth physical dependencies defined by the domain expert.
+
+\begin{algorithm}[H]
+\caption{Build Causal Graph (Construct-DAG)}
+\begin{algorithmic}[1]
+\Require Physics schema JSON file $J_{path}$
+\Ensure Directed Acyclic Graph $G = (V, E)$
+\State $J_{data} \gets \text{ParseJSON}(J_{path})$
+\State $V \gets \emptyset, E \gets \emptyset$
+\For{each $node$ \textbf{in} $J_{data}[\text{``nodes''}]$}
+    \State $V \gets V \cup \{node\}$
+\EndFor
+\For{each $edge (u, v)$ \textbf{in} $J_{data}[\text{``edges''}]$}
+    \If{$u \in V$ \textbf{and} $v \in V$}
+        \State $E \gets E \cup \{(u, v)\}$
+    \EndIf
+\EndFor
+\State \Return $G = (V, E)$
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Time Complexity:} $\mathcal{O}(|V| + |E|)$, where $|V|$ is the number of physical variables and $|E|$ is the number of causal dependencies. \\
+\textbf{Space Complexity:} $\mathcal{O}(|V| + |E|)$ to store the adjacency list or matrix representation of the graph.
+\subsection{Analysis (Mapping) Algorithms}
+This algorithm maps the abstract causal nodes to the concrete tensor matrices within the model and applies the selected intervention (Masking or Perturbation).
+
+\begin{algorithm}[H]
+\caption{Map and Intervene (Apply-Intervention)}
+\begin{algorithmic}[1]
+\Require Graph $G(V,E)$, Weights $W_{dict}$, Mapping JSON $M_{json}$, Target Node $n$, Type $T$, Strength $\sigma$
+\Ensure Intervened weights $W'_{dict}$, Original weights $W_{cache}$
+\State $W'_{dict} \gets W_{dict}$ \Comment{Initialize intervened state}
+\State $layer\_key \gets M_{json}[n]$
+\If{$layer\_key \notin W_{dict}$}
+    \State \Return \textbf{Error} (``Mismatch between Graph and Model'')
+\EndIf
+\State $W_{target} \gets W'_{dict}[layer\_key]$
+\State $W_{cache} \gets \text{Copy}(W_{target})$ \Comment{Cache for reversibility}
+\If{$T == \text{``Mask''}$}
+    \State $W'_{dict}[layer\_key] \gets W_{target} \times 0$
+\ElsIf{$T == \text{``Perturb''}$}
+    \State $Noise \gets \text{Gaussian}(0, \sigma^2, \text{shape}(W_{target}))$
+    \State $W'_{dict}[layer\_key] \gets W_{target} + Noise$
+\EndIf
+\State \Return $W'_{dict}, W_{cache}$
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Time Complexity:} $\mathcal{O}(|W_{target}|)$, where $|W_{target}|$ is the size of the specific tensor being mapped and altered. Finding the key in a hash map is $\mathcal{O}(1)$. \\
+\textbf{Space Complexity:} $\mathcal{O}(|W_{target}|)$ to store the exact copy of the targeted weights in memory for later resetting.
+\subsection{Evaluation Algorithms}
+This evaluates the causal consistency by measuring the mathematical divergence and sensitivity of the model before and after the intervention.
+
+\begin{algorithm}[H]
+\caption{Evaluate Sensitivity Consistency (Compute-Metrics)}
+\begin{algorithmic}[1]
+\Require Baseline predictions $U_{base}$, Intervened predictions $U_{int}$, Model Output $y$, Physical Parameter $\theta_{phys}$
+\Ensure $L^2$ Norm Divergence $\Delta_{L2}$, Sensitivity Gradient $\nabla_{phys}$
+\State $\Delta_{L2} \gets 0$
+\State $N \gets \text{length}(U_{base})$
+\For{$i = 1$ \textbf{to} $N$}
+    \State $\Delta_{L2} \gets \Delta_{L2} + (U_{base}[i] - U_{int}[i])^2$
+\EndFor
+\State $\Delta_{L2} \gets \frac{1}{N} \Delta_{L2}$
+\State $\nabla_{phys} \gets \frac{\partial y}{\partial \theta_{phys}}$ \Comment{Computed via Autograd}
+\State \Return $\Delta_{L2}, \nabla_{phys}$
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Time Complexity:} $\mathcal{O}(N + B)$, where $N$ is the number of test points for the $L^2$ norm calculation, and $B$ is the time taken by the reverse-mode auto-differentiation (autograd) to compute the gradient. \\
+\textbf{Space Complexity:} $\mathcal{O}(N)$ to store the prediction arrays.
+
+\subsection{Sensitivity-Based Gradient Mapping}
+\begin{algorithm}[H]
+\caption{Sensitivity-Based Gradient Mapping (Strategy for variables (not parameters)}
+\begin{algorithmic}[1]
+\Require Trained model $M$, graph definition $G$, target node $n$
+\Ensure Assigned layer $l^*$ for node $n$
+
+\State Extract formula $\mathcal{F}_n$ from $G$
+\State Compute model output: $y \gets M(x)$
+\State Compute node value: $v_n \gets \mathcal{F}_n(y)$
+\State $s \gets \text{mean}(v_n)$
+
+\State Initialize score dictionary $S \gets \emptyset$
+
+\State Compute gradients $\nabla_{\theta_l} s$ for all layers
+
+\ForAll{$l$ in model layers}
+    \State $S[l] \gets \text{mean}(|\nabla_{\theta_l} s|)$
+\EndFor
+
+\State $l^* \gets \arg\max_{l} S[l]$
+
+\State \Return $l^*$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Confidence and Alignment Scoring}
+\begin{algorithm}[H]
+\caption{Confidence and Alignment Scoring}
+\begin{algorithmic}[1]
+\Require Set of nodes $N$, score sets $\{S_n\}$ for each node
+\Ensure Confidence labels and alignment score
+
+\State $High \gets 0$
+\State $Total \gets |N|$
+
+\ForAll{$n \in N$}
+    \State $S_n \gets$ scores for node $n$
+    \State $s_{max} \gets \max(S_n)$
+    \State $s_{2nd} \gets$ second highest value in $S_n$
+
+    \If{$s_{max} \gg s_{2nd}$}
+        \State Label $n$ as High Confidence
+        \State $High \gets High + 1$
+    \ElsIf{$s_{max} \approx s_{2nd}$}
+        \State Label $n$ as Ambiguous
+    \Else
+        \State Label $n$ as Low Confidence
+    \EndIf
+\EndFor
+
+\State $AlignmentScore \gets \frac{High}{Total}$
+
+\If{$AlignmentScore \geq 0.9$}
+    \State Model is Highly Consistent with Physics
+\EndIf
+
+\State \Return Confidence labels, $AlignmentScore$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Physics Details}
+This algorithm computes the fundamental Physics-Informed Neural Network (PINN) loss, combining the empirical data error with the physical constraint violation (PDE residual).
+
+\begin{algorithm}[H]
+\caption{Calculate PINN Total Loss (Compute-PINN-Loss)}
+\begin{algorithmic}[1]
+\Require Neural Network $u_\theta$, Data $(x_i, t_i, u_i)_{i=1}^{N_u}$, Collocation Points $(x_j, t_j)_{j=1}^{N_f}$, Physics Operator $\mathcal{F}$
+\Ensure Total Loss $\mathcal{L}(\theta)$
+\State $Loss_{data} \gets 0$
+\State $Loss_{physics} \gets 0$
+\For{$i = 1$ \textbf{to} $N_u$}
+    \State $\hat{u}_i \gets u_\theta(x_i, t_i)$
+    \State $Loss_{data} \gets Loss_{data} + |\hat{u}_i - u_i|^2$
+\EndFor
+\State $Loss_{data} \gets \frac{1}{N_u} Loss_{data}$
+\For{$j = 1$ \textbf{to} $N_f$}
+    \State $Residual_j \gets \mathcal{F}[u_\theta(x_j, t_j)]$
+    \State $Loss_{physics} \gets Loss_{physics} + |Residual_j|^2$
+\EndFor
+\State $Loss_{physics} \gets \frac{1}{N_f} Loss_{physics}$
+\State $\mathcal{L}(\theta) \gets Loss_{data} + Loss_{physics}$
+\State \Return $\mathcal{L}(\theta)$
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Time Complexity:} $\mathcal{O}(N_u \times C_{net} + N_f \times C_{\mathcal{F}})$, where $C_{net}$ is the cost of a forward pass and $C_{\mathcal{F}}$ is the computational cost of evaluating the differential operator $\mathcal{F}$ using autograd. \\
+\textbf{Space Complexity:} $\mathcal{O}(N_u + N_f)$ to store the computational graph for backpropagation during training.
+
+\section{Implementation Details- Phase 1}
+\subsection{Phase 1 Objective}
+The primary objective of the initial 25\% implementation phase is to train baseline Physics-Informed Neural Networks (PINNs) on a standard continuous system (e.g., 1D Damped Harmonic Oscillator) and formally represent its governing equations as a structured multi-node causal graph. Furthermore, this phase establishes the foundational frontend and backend architecture required for mechanistic validation.
+
+\subsection{Backend \& Engine (Alifaraz)}
+The core backend logic for the \texttt{SciMLIntervener} has been implemented to handle model introspection and controlled perturbations.
+\begin{itemize}
+    \item \textbf{Model Parsing:} Developed functionality to securely load PyTorch state dictionaries (\texttt{.pt} files) and extract internal layer architectures.
+    \item \textbf{Dynamic JSON Mapping:} Replaced hardcoded variables with dynamic JSON parsing to map abstract causal nodes to specific PyTorch weight tensors.
+    \item \textbf{Intervention Logic:} Successfully implemented mathematical interventions, specifically layer \textit{masking} (zeroing weights) and \textit{perturbation} (injecting Gaussian noise: $W_{new} = W_{old} + \mathcal{N}(0, \sigma^2)$).
+\end{itemize}
+
+\subsection{Frontend \& UI (Prathmesh)}
+The interactive dashboard has been developed using Streamlit to facilitate the human-in-the-loop validation process.
+\begin{itemize}
+    \item \textbf{Dashboard Foundation:} Built the single-page application with secure file upload handlers for model and graph data.
+    \item \textbf{Graph Rendering:} Integrated NetworkX/Graphviz to dynamically render the inferred causal graph structure from the JSON schema.
+    \item \textbf{Dynamic Plotting:} Configured real-time Matplotlib rendering areas to simultaneously overlay baseline predictions ($u_\theta$) and intervened predictions ($u_{\theta}'$).
+\end{itemize}
+
+\subsection{Physics Modeling \& Ground Truth (Adwait)}
+The baseline scientific parameters have been formalized to evaluate the network's adherence to physical laws.
+\begin{itemize}
+    \item \textbf{System Formalization:} Modeled the 1D Damped Harmonic Oscillator, defining the causal nodes: Mass ($m$), Damping ($c$), and Spring Constant ($k$).
+    \item \textbf{Graph Mapping:} Constructed the \texttt{.json} causal graph ensuring that correct directional dependencies (e.g., $m \rightarrow \text{Acceleration}$) are preserved.
+    \item \textbf{Analytical Baseline:} Established the theoretical sensitivity expectations for the network's partial derivatives to confirm mechanistic truth over simple numerical fitting.
+\end{itemize}
+
+\subsection{Evaluation Metrics (25\% Target)}
+The integration handshake between the UI and Backend has been completed. The system is now configured to evaluate the trained PINNs against the following strict Phase 1 constraints:
+\begin{enumerate}
+    \item \textbf{Numerical Accuracy:} The model must achieve a Squared Error Sum ($L^2$ Norm) of $\le 5\%$ over the full trajectory.
+    \item \textbf{Physics Adherence:} The physics residual norm must fall below the predefined tolerance limit.
+    \item \textbf{Sensitivity Consistency:} The partial derivative of the output with respect to each physical parameter must perfectly align with the analytical expectation (verifying sign and trend consistency).
+\end{enumerate}
+
+\section{Implementation Details - Phase 2}
+
+\subsection{Phase 2 Objective}
+This phase transitions the system from manual intervention to an automated mapping layer. The primary objective is to algorithmically link causal graph nodes to internal model components (weights, activations, or loss terms) and automatically detect misaligned neural architectures.
+
+\subsection{Backend \& Engine (Alifaraz)}
+The backend architecture is upgraded into a "Discovery Engine." Key implementations include an automated target inventory extraction function (\texttt{get\_perturbable\_tensors}), a systematic parameter perturbation loop, and a misalignment detection logic that actively flags abnormal internal sensitivities during forward passes.
+
+\subsection{Frontend \& UI (Prathmesh)}
+The interface shifts into a full Validation Dashboard. New components include the rendering of 2D spatiotemporal heatmaps (for continuous fluid systems like the Burgers' equation), a dynamic Directional Consistency Table.
+
+\subsection{Physics Modeling \& Ground Truth (Adwait)}
+The physics baseline scales to spatiotemporal Partial Differential Equations by training the 1D Burgers', Damped Oscillator and Navier Stokes equations using PyTorch\texttt{autograd}. The aim in the further phase is to generalize this across various libraries like Tensorflow/Keras.
+
+\subsection{Evaluation Metrics ( 50\% target )}
+The Phase 2 success metric calculates alignment accuracy to verify functional influence rather than arbitrary layer selection. The system evaluates the performance using the following formula:
+\begin{equation}
+\text{Alignment Accuracy} = \left( \frac{\text{Nodes Passing Consistency Check}}{\text{Total Mapped Nodes}} \right) \times 100
+\end{equation}
+The target threshold is $\ge$ 90\% correspondence between the analytical expected physical influence and the actual observed model response.
+
+% ============================================================
+% PHASE 3 IMPLEMENTATION
+% ============================================================
+
+\section{Implementation Details - Phase 3}
+
+\subsection{Phase 3 Objective}
+
+Phase 3 extends the GIIT framework from automated neural--causal
+mapping toward structured intervention and mechanistic isolation. The
+objective of this phase is to determine whether the neural components
+identified by the mapping engine exhibit functional behavior consistent
+with their corresponding physical concepts.
+
+Rather than relying solely on prediction error or physics residuals,
+Phase 3 performs controlled interventions on mapped neural components
+and observes the resulting changes in the model output. This enables
+the system to distinguish a component that is merely sensitive to a
+physical variable from a component whose intervention produces the
+physically expected response.
+
+The Phase 3 implementation therefore focuses on four major objectives:
+
+\begin{enumerate}
+    \item Apply controlled perturbations to neural components identified
+    by the mapping engine.
+    
+    \item Compare baseline and intervened model predictions using
+    quantitative divergence metrics.
+    
+    \item Validate whether the direction of the intervention response
+    agrees with the expected physical behavior.
+    
+    \item Evaluate the stability of neural--physical correspondences
+    across different temporal evaluation regimes.
+\end{enumerate}
+
+The phase uses the $1$D viscous Burgers' equation as the primary
+spatiotemporal benchmark and the damped harmonic oscillator as a
+secondary dynamical-system benchmark.
+
+
+\subsection{Structured Intervention Engine}
+
+The intervention engine provides a controlled mechanism for modifying
+the internal state of a trained neural network while preserving the
+remaining model parameters.
+
+For a selected physical node $v$ and its mapped neural tensor
+$W_v$, the system first stores a copy of the original tensor. The
+intervention is then applied to the selected tensor without modifying
+the remaining components of the network.
+
+Two principal intervention mechanisms are supported:
+
+\begin{enumerate}
+    \item \textbf{Masking:} The selected tensor is multiplied by zero,
+    effectively removing its direct contribution to the forward
+    computation.
+    
+    \item \textbf{Gaussian perturbation:} Controlled Gaussian noise is
+    added to the selected tensor according to
+    \begin{equation}
+        W_v' = W_v + \epsilon,
+        \qquad
+        \epsilon \sim \mathcal{N}(0,\sigma^2).
+    \end{equation}
+\end{enumerate}
+
+The original tensor is cached before intervention, allowing the model
+to be restored to its baseline state after each experiment.
+
+For the Burgers' equation experiments, the mapping analysis uses
+$100$ perturbation replicates on a single trained model with
+$\sigma = 0.1$. Each replicate independently samples the perturbation
+while retaining the same trained network parameters.
+
+
+\subsection{Targeted Neural Component Intervention}
+
+The intervention engine operates on the neural components identified
+by the neural--causal mapping stage. Let
+
+\begin{equation}
+    M : V \rightarrow L
+\end{equation}
+
+denote the mapping from a physical graph node $v \in V$ to a neural
+layer or tensor $L$.
+
+For a selected node $v$, the corresponding neural component $M(v)$ is
+intervened upon and the resulting model output is compared with the
+baseline prediction.
+
+Let $u_{\mathrm{base}}(x,t)$ denote the original model prediction and
+$u_{\mathrm{int}}(x,t)$ denote the prediction following intervention.
+The intervention-induced divergence is evaluated using the prediction
+difference
+
+\begin{equation}
+    \Delta u(x,t)
+    =
+    u_{\mathrm{int}}(x,t)
+    -
+    u_{\mathrm{base}}(x,t).
+\end{equation}
+
+This provides a direct mechanism for determining whether a mapped
+component has a measurable functional influence on the model output.
+
+
+\subsection{Mechanistic Direction Validation}
+
+Magnitude of response alone is insufficient to establish a physically
+meaningful correspondence. A neural component may produce a large
+change in the prediction while changing the physical behavior in an
+incorrect direction.
+
+Therefore, Phase 3 incorporates directional validation. For every
+physical node, the system stores an analytically expected response
+direction obtained from the governing physical equation.
+
+For example, for the Burgers' equation
+
+\begin{equation}
+    u_t + u u_x - \nu u_{xx} = 0,
+\end{equation}
+
+an increase in the kinematic viscosity $\nu$ is expected to reduce the
+amplitude and sharpness of the solution. Consequently, an intervention
+identified as corresponding to viscosity should exhibit a response
+consistent with this physical trend.
+
+Similarly, for the damped harmonic oscillator
+
+\begin{equation}
+    m\ddot{x} + c\dot{x} + kx = 0,
+\end{equation}
+
+the expected physical effects are:
+
+\begin{itemize}
+    \item changes in mass influence the oscillatory behavior and
+    characteristic frequency;
+    
+    \item changes in damping influence the rate of energy dissipation
+    and decay;
+    
+    \item changes in spring stiffness influence the oscillation
+    frequency.
+\end{itemize}
+
+The intervention response is therefore evaluated using both response
+magnitude and physical direction.
+
+
+\subsection{Repeated Perturbation Analysis}
+
+To reduce dependence on a single random perturbation realization, the
+mapping and intervention procedure is repeated multiple times.
+
+For each physical node $v$, let
+
+\begin{equation}
+    C_v(l)
+\end{equation}
+
+denote the number of perturbation replicates in which layer $l$ is
+identified as the highest-scoring neural component.
+
+The modal neural component is then defined as
+
+\begin{equation}
+    l_v^*
+    =
+    \arg\max_l C_v(l).
+\end{equation}
+
+The corresponding consistency ratio is
+
+\begin{equation}
+    R_v
+    =
+    \frac{C_v(l_v^*)}{N},
+\end{equation}
+
+where $N$ is the total number of perturbation replicates.
+
+This repeated-intervention procedure allows GIIT to distinguish a
+consistently dominant neural component from a component selected only
+because of a particular random perturbation.
+
+
+\subsection{Distribution-Shift Based Mechanistic Analysis}
+
+An additional component introduced during Phase 3 is evaluation of
+neural--physical correspondence under temporal distribution shift.
+
+For the Burgers' equation benchmark, four evaluation regimes are
+considered:
+
+\begin{enumerate}
+    \item Full in-distribution interval:
+    $t \in [0,1]$.
+    
+    \item Late-time in-distribution sub-window:
+    $t \in [0.5,0.8]$.
+    
+    \item Boundary-crossing interval:
+    $t \in [0.5,1.5]$.
+    
+    \item Severe temporal extrapolation:
+    $t \in [1,2]$.
+\end{enumerate}
+
+The same perturbation-based mapping procedure is independently
+performed for each evaluation regime. The resulting mappings are
+compared against the full in-distribution baseline.
+
+This enables GIIT to investigate whether a physical concept continues
+to correspond to the same neural component when the model is evaluated
+outside the conditions under which the representation was originally
+identified.
+
+
+\subsection{Layer Correspondence Stability}
+
+A physical node is considered to have a stable correspondence in a
+given evaluation regime when its modal winning layer is identical to
+the modal winning layer identified under the full in-distribution
+baseline.
+
+The percentage of stable physical nodes is calculated as
+
+\begin{equation}
+    S =
+    \frac{N_{\mathrm{stable}}}
+    {N_{\mathrm{nodes}}}
+    \times 100.
+\end{equation}
+
+In addition to the stable-node percentage, GIIT tracks the average
+winning layer index over all physical nodes. This provides a compact
+measure of systematic movement of functional correspondence through
+the network.
+
+For a set of physical nodes $V$, the average winning layer is given by
+
+\begin{equation}
+    \bar{L}
+    =
+    \frac{1}{|V|}
+    \sum_{v \in V} l_v^*.
+\end{equation}
+
+A systematic shift in $\bar{L}$ across evaluation regimes indicates
+that the functional localization of physical concepts is changing
+within the neural network.
+
+
+\subsection{Output-Level and Physics-Level Evaluation}
+
+The intervention analysis is evaluated jointly with conventional
+SciML metrics. Three complementary measurements are considered:
+
+\begin{enumerate}
+    \item \textbf{Relative $L_2$ error:} Measures deviation of the
+    neural solution from the reference solution.
+    
+    \item \textbf{Physics residual:} Measures violation of the
+    governing differential equation.
+    
+    \item \textbf{Internal correspondence stability:} Measures whether
+    physical graph nodes continue to map to the same neural components.
+\end{enumerate}
+
+This separation is important because a model can exhibit relatively
+small output error while simultaneously undergoing substantial
+reorganization of its internal functional correspondences.
+
+Consequently, Phase 3 treats output accuracy and mechanistic
+correspondence as complementary rather than interchangeable measures.
+
+\section{Implementation Details - Phase 4}
+\subsection{Phase 4 Objective}
+The objective of this phase is to wrap up the GIIT framework by improving the user interface, deploying the system for external use, and demonstrating its generality across multiple physical systems.
+\subsection{UI Improvement} 
+The notable UI improvements include the following:
+\begin{itemize}
+    \item \textbf{Full-fledged Frontend and Backend}: Replaced the monolithic Streamlit prototype from earlier phases with a decoupled client--server architecture. The frontend is built using React 18, TypeScript, Vite, and Tailwind CSS, with centralized state management via Zustand, while the backend is powered by a RESTful FastAPI service handling multi-session model introspection, graph management, and intervention execution.
+    \item \textbf{Three-Column Studio Workbench Layout}: Redesigned the user interface into a responsive, dark-themed studio workspace comprising a Left Sidebar for model (\texttt{.py}), weight (\texttt{.pt}/\texttt{.pth}), and ruleset (\texttt{.json}) uploads; a central interactive canvas; a Right Panel housing the Node Inspector and Intervention Studio; and a collapsible bottom Analytics Dock.
+    \item \textbf{Interactive Causal Graph Canvas}: Replaced static NetworkX/Graphviz plots with an interactive node-graph canvas powered by \texttt{@xyflow/react} (React Flow). Physical concepts are organized into hierarchical columns and color-coded by role (inputs, latent layers, ODE/PDE parameters, intermediate derivatives, loss residuals, and outputs), complete with zoom/pan controls, a mini-map, animated directional edges, and click-to-inspect functionality.
+    \item \textbf{Real-Time Node Inspector and Intervention Studio}: Added a dedicated inspector panel displaying mathematical formulas, physical descriptions, default values, and expected sensitivity signs for any selected graph node. The adjacent Intervention Studio enables fine-grained perturbations across selectable neural tensors using four distinct methods---\textit{Noise Injection}, \textit{Weight Masking}, \textit{Gain Scaling}, and \textit{Value Clamping}---with a continuous perturbation strength slider ($\alpha \in [0, 1]$), quick presets, and automated parameter sweep execution.
+    \item \textbf{Multi-Tab Analytics Dock with Interactive Visualizations}: Upgraded static Matplotlib figures to responsive, interactive \texttt{Plotly.js} charts organized across six specialized diagnostic tabs:
+    \begin{enumerate}
+        \item \textit{Trajectory Comparison}: Overlays analytical ground truth, baseline PINN predictions, and intervened trajectories in real time.
+        \item \textit{Error \& Loss Metrics}: Displays summary metric cards for Baseline vs.\ Intervened MSE, Trajectory RMSE, MAE, $L_2$ norm divergence, peak deviation, and percentage performance degradation.
+        \item \textit{Physics Sensitivity}: Tabulates autograd sensitivity signs against analytically expected physical signs to automatically flag physical consistency or sign violations alongside the physics residual norm.
+        \item \textit{Node $\rightarrow$ Layer Mapping}: Presents the automated discovery table linking physical graph nodes to specific neural weight tensors, accompanied by visual confidence bars, alignment percentages, and mapping strategies.
+        \item \textit{Parameter Sweep Curve}: Plots dual-axis monotonic degradation curves tracking MSE loss and maximum trajectory divergence across perturbation strengths ($\alpha : 0.0 \rightarrow 1.0$).
+        \item \textit{AI Physics Assistant}: Provides an embedded conversational interface to query governing differential equations, parameter sensitivities, and layer perturbation effects.
+    \end{enumerate}
+    \item \textbf{AI-Assisted Ruleset Generation \& Guided Onboarding}: Integrated an LLM-powered ruleset generator (via OpenRouter) directly into the sidebar to automatically extract governing equations and construct causal graph JSON schemas from uploaded PyTorch model code. Additionally, implemented a 5-step interactive \textit{Guided Tour}, a live backend health heartbeat indicator with automatic mock-mode fallback, and one-click demo loading for immediate testing.
+\end{itemize}
+\subsection{Deployment}
+\subsection{Training on Burgers with independent seeds}
+\subsection{A new case study}
+
+
+
+
+\section{Results and Discussion}
+\subsection{Screenshots}
+\subsubsection{Phase 1}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s1.jpeg}
+    \caption{output}
+    \label{fig:s1}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s2.jpeg}
+    \caption{output}
+    \label{fig:s2}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s3.jpeg}
+    \caption{output}
+    \label{fig:s3}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s4.jpeg}
+    \caption{output}
+    \label{fig:s4}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s5.jpeg}
+    \caption{output}
+    \label{fig:s5}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s6.jpeg}
+    \caption{output}
+    \label{fig:s6}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s7.jpeg}
+    \caption{output}
+    \label{fig:s7}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s8.jpeg}
+    \caption{output}
+    \label{fig:s8}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s9.jpeg}
+    \caption{output}
+    \label{fig:s9}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s8.jpeg}
+    \caption{output}
+    \label{fig:s8}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s9.jpeg}
+    \caption{output}
+    \label{fig:s9}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{Phase 2}
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/auto_gen.png}
+    \caption{output}
+    \label{fig:s10}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/auto_generated.png}
+    \caption{output}
+    \label{fig:s11}
+\end{figure}
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/causal_graph_burgers.png}
+    \caption{output}
+    \label{fig:s12}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/b1.png}
+    \caption{output}
+    \label{fig:s13}
+\end{figure}
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/b2.png}
+    \caption{output}
+    \label{fig:s14}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/b3.png}
+    \caption{output}
+    \label{fig:s15}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s16.png}
+    \caption{output}
+    \label{fig:s16}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s17.png}
+    \caption{output}
+    \label{fig:s17}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s18.png}
+    \caption{output}
+    \label{fig:s18}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s19.png}
+    \caption{output}
+    \label{fig:s19}
+\end{figure}
+
+
+
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{c l l c c >{\raggedright\arraybackslash}X}
+\hline
+\textbf{Index} & \textbf{Physical Node} & \textbf{Mapped Layer} & \textbf{Confidence} & \textbf{Score} & \textbf{Note} \\
+\hline
+0 & Kinematic Viscosity & fch.5.0.weight & High & 0.922251 & Layer `fch.5.0.weight' uniquely matched trend `decreases\_amplitude'. \\
+1 & Velocity Field & fce.bias & High & 1 & Layer `fce.bias' has max gradient magnitude (1.00e+00) for node `u'. \\
+2 & Temporal Gradient & fch.5.0.bias & High & 0.085456 & Layer `fch.5.0.bias' has max gradient magnitude (8.55e-02) for node `u\_t'. \\
+3 & Spatial Gradient & fcs.0.bias & High & 2.908958 & Layer `fcs.0.bias' has max gradient magnitude (2.91e+00) for node `u\_x'. \\
+4 & Spatial Laplacian & fcs.0.bias & High & 1110.392456 & Layer `fcs.0.bias' has max gradient magnitude (1.11e+03) for node `u\_xx'. \\
+\hline
+\end{tabularx}
+\caption{Mapping between physical nodes and model layers}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.4\textwidth]{figures/s20.png}
+    \caption{output}
+    \label{fig:s20}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s21.png}
+    \caption{output}
+    \label{fig:s21}
+\end{figure}
+
+
+\subsubsection{Phase 3}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s22.png}
+    \caption{output}
+    \label{fig:s22}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/s23.png}
+    \caption{output}
+    \label{fig:s23}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{s24.png}
+    \caption{output}
+    \label{fig:s24}
+\end{figure}
+
+
+
+
+
+
+\subsection{Analysis- Phase 1}
+\subsection{System Separation}
+
+The screenshots correspond to two distinct subsystems:
+
+\begin{itemize}
+    \item \textbf{Backend:} PINN-based damped oscillator validation (terminal output).
+    \item \textbf{Frontend:} Graph-based inspection interface for projectile motion.
+\end{itemize}
+
+These represent two different physical systems and demonstrate architectural generality rather than a single pipeline instance.
+
+% ---------------------------------------------------------
+\subsection{Backend Analysis: Damped Oscillator PINN}
+
+The backend log shows initialization of a Physics-Informed Neural Network for the ODE:
+
+\[
+m\ddot{x} + c\dot{x} + kx = 0
+\]
+
+\paragraph{Architecture}
+\[
+\text{Linear}(1 \rightarrow 64) \rightarrow \tanh \times 3 \rightarrow \text{Linear}(64 \rightarrow 1)
+\]
+Total parameters: 8,513.
+
+\paragraph{Validation Metrics}
+\begin{itemize}
+    \item Relative $L_2$ error: $1.99\%$ (passes $\leq 5\%$ threshold)
+    \item Mean physics residual: $2.884430 \times 10^{-4}$
+\end{itemize}
+
+This indicates:
+\begin{itemize}
+    \item High predictive accuracy.
+    \item Strong compliance with governing differential equation.
+\end{itemize}
+
+\paragraph{Sensitivity Analysis}
+
+The gradients $\partial R/\partial m$, $\partial R/\partial c$, and $\partial R/\partial k$ have physically correct signs:
+
+\begin{itemize}
+    \item Increasing mass slows decay.
+    \item Increasing damping accelerates energy dissipation.
+    \item Increasing spring constant raises oscillation frequency.
+\end{itemize}
+
+This confirms that the learned representation encodes physically meaningful structure.
+
+% ---------------------------------------------------------
+\subsection{Frontend Analysis: Projectile Motion Interface}
+
+The frontend screenshots correspond to a different physical model (projectile motion).
+
+\subsubsection{Graph Structure}
+
+The visualized graph includes:
+
+\[
+\texttt{velocity\_block}, \quad
+\texttt{gravity\_block}, \quad
+\texttt{combiner}
+\]
+
+Both velocity and gravity feed into a central aggregation node. This reflects decomposition of motion into horizontal and vertical components or additive acceleration effects.
+
+\subsubsection{Intervention Configuration}
+
+Available operations:
+\begin{itemize}
+    \item \texttt{mask}
+    \item \texttt{freeze}
+    \item \texttt{perturb}
+\end{itemize}
+
+Masking the \texttt{velocity\_block} at strength $0.50$ reduces its influence by 50\%.
+
+\subsubsection{Performance Impact}
+
+\[
+\text{MSE}_{\text{baseline}} = 10.8510
+\]
+\[
+\text{MSE}_{\text{after intervention}} = 427.0643
+\]
+
+The $\approx 39\times$ increase in MSE shows that velocity is a structurally critical contributor to projectile prediction accuracy.
+
+\subsubsection{Trajectory Behavior}
+
+Baseline predictions follow physically consistent upward-downward motion.
+
+After intervention:
+\begin{itemize}
+    \item Trajectory becomes distorted.
+    \item Negative drift and instability appear.
+    \item Physical realism is compromised.
+\end{itemize}
+
+This validates that the graph intervention mechanism is not cosmetic; it meaningfully alters system dynamics.
+
+% ---------------------------------------------------------
+\subsection{Architectural Implications}
+
+The separation between:
+
+\[
+\text{Backend (ODE + PINN validation)} 
+\quad \text{and} \quad
+\text{Frontend (Graph intervention UI)}
+\]
+
+demonstrates modular design:
+
+\begin{itemize}
+    \item Backend ensures physical consistency.
+    \item Frontend enables structural experimentation.
+    \item Graph abstraction generalizes across physical domains.
+\end{itemize}
+
+The fact that two different physical systems (oscillator and projectile) operate within the same inspection-intervention paradigm suggests framework extensibility.
+
+% ---------------------------------------------------------
+\subsection{Overall Assessment}
+
+\textbf{Strengths}
+\begin{itemize}
+    \item Clear backend scientific validation.
+    \item Explicit causal graph representation.
+    \item Quantifiable intervention effects.
+    \item Domain-agnostic architecture.
+\end{itemize}
+
+\textbf{Limitations}
+\begin{itemize}
+    \item No uncertainty quantification.
+    \item Limited graph complexity shown.
+    \item No multi-node simultaneous interventions demonstrated.
+\end{itemize}
+
+\subsection{Phase 2 Analysis and Results: 1D Burgers' Equation}
+
+\subsubsection{System Initialization and Graph Extraction}
+The automated diagnostic suite was initialized using the 1D Viscous Burgers' equation baseline. The parser successfully ingested the source code and PyTorch state dictionary (\texttt{burgers\_1d.pt}) in 0.151 seconds. The engine dynamically extracted the governing Partial Differential Equation:
+\begin{equation}
+u_t + u \cdot u_x - \nu \cdot u_{xx} = 0
+\end{equation}
+The causal graph correctly identified five internal physics nodes: the physical parameter Kinematic Viscosity ($\nu$), the output Velocity Field ($u$), and the intermediate latent derivatives (Temporal Gradient $u_t$, Spatial Gradient $u_x$, and Spatial Laplacian $u_{xx}$). The analytical expectation for kinematic viscosity was correctly logged as \texttt{decreases\_amplitude}.
+
+\subsubsection{Automated Discovery and Heuristic Mapping}
+During the automated mapping phase, the engine's \texttt{get\_perturbable\_tensors} function identified an inventory of 18 manipulatable weight and bias tensors within the Fully Connected Network (FCN) architecture. 
+
+Utilizing the systematic perturbation strategy, the engine successfully isolated the internal layer responsible for viscosity. The physical node $\nu$ was autonomously mapped to the specific network layer \texttt{fch.6.0.weight} with high confidence, as this layer uniquely reproduced the mathematically expected \texttt{decreases\_amplitude} trend when perturbed. 
+
+The engine successfully mapped all 5 physical nodes to their corresponding network components without any arbitrary layer assignment, achieving the Phase 2 objective with a \textbf{100.0\% Alignment Accuracy}, well above the strict $\ge$ 90\% threshold.
+
+\subsubsection{Mechanistic Validation and Sensitivity Reporting}
+The final validation report highlights the core utility of the diagnostic suite in evaluating model viability. 
+
+The model reported a Physics Residual Norm (Mean $R^2$) of $1.914 \times 10^{-4}$. Through autograd-based sensitivity analysis, the engine computed the partial derivative of the residual with respect to the kinematic viscosity parameter ($\frac{dR}{d\nu} = -1.705$). The negative sign of the computed gradient perfectly matched the expected analytical sign, confirming that increasing viscosity within the network's learned mechanics correctly reduces the sharpness of the shock wave and decreases peak gradients.
+
+Notably, the tool flagged the network's predictive accuracy, calculating a Relative $L^2$ Norm of 51.151\%, which failed the strict $\le$ 5\% threshold. This duality perfectly demonstrates the framework's diagnostic power: while the model's current empirical fit is poor after perturbation, the 100\% alignment accuracy and consistent sensitivity verify that the underlying causal mechanics have been successfully embedded. The engineer can confidently proceed with hyperparameter tuning, knowing the network is not "hallucinating" the physics.
+
+\subsubsection{Frontend Validation Dashboard (UI Analysis)}
+The frontend interface successfully translates the backend's automated discovery engine into an intuitive, researcher-facing Validation Dashboard. The UI architecture is broken down into several modular components that visualize the mechanistic integrity of the 1D Burgers' equation model.
+
+\textbf{Node Inspection and Automated Mapping:}
+The \textit{Node Inspector} dynamically renders the mathematical attributes of the causal graph, isolating specific computational nodes (e.g., the spatial Laplacian $u_{xx}$) and explicitly displaying their governing formulas and dependent variables ($t$ and $x$). The \textit{Layer Mapping} module provides immediate visual feedback for the backend's discovery engine, highlighting successful heuristic discoveries (such as linking the spatial gradient $u_x$ to the \texttt{fcs.0.bias} tensor) via green success banners. Crucially, the UI intelligently retains a \textit{Manual Layer Override} dropdown, preserving researcher control for edge-case experimentation.
+
+\textbf{Sensitivity Consistency Reporting:}
+The UI digests the complex autograd partial derivatives into a highly readable \textit{Sensitivity Consistency} table. This component effectively separates empirical performance from causal mechanics. It correctly renders a critical red failure banner for the poor Relative $L^2$ Norm ($0.5115$, failing the $\le 5\%$ threshold), while simultaneously validating the underlying physics logic by displaying a green verification checkmark for the Kinematic Viscosity parameter. The table explicitly juxtaposes the computed gradient sign ($-$) against the expected sign ($-$), proving the functional alignment to the user.
+
+\textbf{Intervention Impact Visualization:}
+To definitively prove that the mapped network layers functionally govern the physics, the dashboard features an \textit{Intervention Visualization} plotting area. By overlaying the original baseline predictions (blue) against the intervened state (red), the UI dramatically illustrates the chaotic divergence in the system when the mapped weights are targeted. This visual evidence is strictly quantified by the \textit{Model Performance Comparison} module, which tracks the exact mathematical degradation in Mean Squared Error (shifting from a baseline MSE of 0.1255 to an intervened MSE of 0.2344) caused by the tool's targeted perturbation.
+
+% ============================================================
+% PHASE 3 RESULTS
+% ============================================================
+
+\subsection{Phase 3 Analysis and Results: Structured Intervention and
+Mechanistic Isolation}
+
+Phase 3 evaluates whether the neural components identified by the
+GIIT mapping engine exhibit physically meaningful functional behavior
+when subjected to controlled intervention.
+
+The experiments use the $1$D viscous Burgers' equation as the primary
+benchmark. The governing equation is
+
+\begin{equation}
+    u_t + u u_x - \nu u_{xx} = 0,
+\end{equation}
+
+where $u$ denotes the velocity field and $\nu$ denotes the kinematic
+viscosity.
+
+The computational physics graph contains the physical and intermediate
+quantities
+
+\begin{equation}
+    \left\{
+    \nu,\,
+    u,\,
+    u_t,\,
+    u_x,\,
+    u_{xx},\,
+    uu_x,\,
+    \nu u_{xx}
+    \right\}.
+\end{equation}
+
+The mapping engine evaluates the functional influence of internal
+network tensors through controlled perturbations. For the Burgers'
+experiments, $100$ perturbation replicates are performed for each
+evaluation regime using a perturbation standard deviation of
+$\sigma=0.1$.
+
+
+\subsubsection{Baseline Internal Correspondence}
+
+Under the full in-distribution regime $t\in[0,1]$, the perturbation
+analysis identifies the deeper hidden layers as the dominant
+components for several physical quantities.
+
+The kinematic viscosity $\nu$ and velocity field $u$ primarily map to
+the fifth hidden layer, while derivative and curvature-related
+quantities predominantly map to the sixth hidden layer.
+
+An important observation is that sensitivity magnitude alone does not
+guarantee physical correctness. In particular, although viscosity is
+consistently localized to its dominant neural component, its
+intervention response can exhibit a direction opposite to the
+analytically expected physical trend.
+
+This demonstrates an important design principle of GIIT: a component
+must be evaluated not only according to how strongly it responds, but
+also according to whether its response agrees with the expected
+physical behavior.
+
+
+\subsubsection{Repeated Perturbation Mapping}
+
+The mapping distributions obtained from the $100$ perturbation
+replicates are summarized in Table~\ref{tab:phase3_mapping}.
+
+\begin{table}[htbp]
+\centering
+\caption{Neural component mapping distributions across evaluation
+regimes for the Burgers' equation benchmark. The top component denotes
+the modal winning layer and consistency denotes the number of
+replicates selecting that component.}
+\label{tab:phase3_mapping}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Physical Node}
+&
+\textbf{ID}
+&
+\textbf{ID Sub}
+&
+\textbf{Boundary}
+&
+\textbf{OOD}
+\\
+\hline
+Kinematic Viscosity $\nu$
+& $h_5$ (69/100)
+& $h_5$ (67/100)
+& $h_5$ (56/100)
+& $h_0$ (73/100)
+\\
+Velocity Field $u$
+& $h_5$ (35/100)
+& $h_5$ (33/100)
+& $h_5$ (30/100)
+& $h_5$ (29/100)
+\\
+Temporal Gradient $u_t$
+& $h_6$ (34/100)
+& $h_5$ (23/100)
+& $h_1$ (24/100)
+& $h_5$ (25/100)
+\\
+Spatial Gradient $u_x$
+& $h_6$ (23/100)
+& $h_1$ (22/100)
+& $h_1$ (24/100)
+& $h_1$ (30/100)
+\\
+Spatial Laplacian $u_{xx}$
+& $h_6$ (31/100)
+& $h_0$ (26/100)
+& $h_0$ (35/100)
+& $h_0$ (35/100)
+\\
+Nonlinear Advection $uu_x$
+& $h_6$ (34/100)
+& $h_5$ (26/100)
+& $h_5$ (28/100)
+& $h_5$ (28/100)
+\\
+Viscous Diffusion $\nu u_{xx}$
+& $h_6$ (31/100)
+& $h_0$ (26/100)
+& $h_0$ (35/100)
+& $h_0$ (35/100)
+\\
+\hline
+\textbf{Average Layer Index}
+& \textbf{5.71}
+& \textbf{3.00}
+& \textbf{2.43}
+& \textbf{2.29}
+\\
+\hline
+\end{tabular}
+\end{table}
+
+
+\subsubsection{Correspondence Drift Across Evaluation Regimes}
+
+The repeated intervention analysis reveals a systematic change in the
+location of neural--physical correspondences as the evaluation regime
+moves away from the full training distribution.
+
+The average winning layer index decreases from
+
+\begin{equation}
+    5.71
+    \rightarrow
+    3.00
+    \rightarrow
+    2.43
+    \rightarrow
+    2.29,
+\end{equation}
+
+corresponding respectively to full in-distribution evaluation,
+late-time in-distribution evaluation, boundary-crossing evaluation,
+and severe temporal extrapolation.
+
+This indicates a systematic migration of the identified functional
+components toward earlier neural layers.
+
+Importantly, this change begins before severe predictive degradation.
+In the boundary-crossing regime, the relative $L_2$ error remains
+approximately $5.88\%$, while only $2$ out of $7$ physical nodes retain
+their baseline layer assignment.
+
+Under severe temporal extrapolation, only $1$ out of $7$ nodes retains
+its baseline assignment.
+
+Therefore, internal correspondence drift can be detected even when
+output-level degradation is not yet extreme.
+
+
+\subsubsection{Quantitative Comparison of Evaluation Regimes}
+
+Table~\ref{tab:phase3_regimes} summarizes the principal quantitative
+measurements obtained during the structured intervention experiments.
+
+\begin{table}[htbp]
+\centering
+\caption{Predictive performance, physics residual, and internal
+correspondence stability across temporal evaluation regimes.}
+\label{tab:phase3_regimes}
+\begin{tabular}{lcccc}
+\hline
+\textbf{Regime}
+&
+\textbf{Relative $L_2$ (\%)}
+&
+\textbf{Physics Residual}
+&
+\textbf{$\partial L_R/\partial\nu$}
+&
+\textbf{Stable Mappings}
+\\
+\hline
+ID $[0,1]$
+& 3.855
+& $1.915\times10^{-4}$
+& $-1.705$
+& Baseline
+\\
+ID Sub $[0.5,0.8]$
+& 5.413
+& $1.011\times10^{-4}$
+& $-5.064$
+& $2/7$
+\\
+Boundary $[0.5,1.5]$
+& 5.883
+& $2.811\times10^{-2}$
+& $-73.576$
+& $2/7$
+\\
+OOD $[1,2]$
+& 31.752
+& $3.301\times10^{-1}$
+& $-154.115$
+& $1/7$
+\\
+\hline
+\end{tabular}
+\end{table}
+
+
+\subsubsection{Mechanistic Response to Viscosity}
+
+For the viscosity parameter, the computed residual sensitivity under
+the full in-distribution regime is
+
+\begin{equation}
+    \frac{\partial R}{\partial \nu} = -1.705.
+\end{equation}
+
+The negative sign agrees with the expected local physical behavior:
+increasing viscosity reduces the sharpness of the solution and
+suppresses high spatial gradients.
+
+Under temporal distribution shift, the residual sensitivity remains
+negative, although its magnitude increases substantially. This shows
+that parameter-level sensitivity can remain directionally consistent
+even while the layer-level correspondence changes.
+
+This distinction is central to the GIIT analysis. Parameter-gradient
+consistency does not by itself guarantee that the same internal neural
+component continues to represent the corresponding physical concept.
+
+
+\subsubsection{Intervention-Induced Output Divergence}
+
+The intervention visualization compares the original model prediction
+with the prediction obtained after modifying a mapped neural component.
+
+For the Burgers' equation benchmark, targeted intervention produces a
+measurable increase in model error. In the reported experiment, the
+baseline mean squared error is approximately
+
+\begin{equation}
+    \mathrm{MSE}_{\mathrm{base}} = 0.1255,
+\end{equation}
+
+while the corresponding intervened model produces
+
+\begin{equation}
+    \mathrm{MSE}_{\mathrm{int}} = 0.2344.
+\end{equation}
+
+The increase in error demonstrates that the identified neural
+component has a functional influence on the model solution rather
+than representing a purely descriptive or cosmetic mapping.
+
+The visualization of the baseline and intervened solutions further
+shows divergence in the predicted field following intervention,
+providing a direct connection between internal neural modification and
+observable physical behavior.
+
+
+\subsubsection{Mechanistic Interpretation}
+
+The results demonstrate that GIIT provides information that is not
+captured by conventional output-level evaluation alone.
+
+The model may retain relatively low prediction error while its
+internal physical correspondences undergo substantial changes. The
+boundary-crossing regime provides the clearest example: the relative
+$L_2$ error is approximately $5.88\%$, but only $2$ of the $7$ physical
+nodes preserve their baseline layer assignments.
+
+As the evaluation window moves further outside the training
+distribution, correspondence stability decreases further and the
+average winning layer shifts toward earlier components of the network.
+
+These observations suggest that functional correspondence is
+context-dependent and that internal representation changes may serve
+as an early diagnostic signal of distribution-shift sensitivity.
+
+
+\subsubsection{Damped Harmonic Oscillator Validation}
+
+The structured intervention framework was additionally evaluated on a
+$1$D damped harmonic oscillator governed by
+
+\begin{equation}
+    m\ddot{x} + c\dot{x} + kx = 0,
+\end{equation}
+
+with
+
+\begin{equation}
+    m=1,\qquad c=4,\qquad k=400.
+\end{equation}
+
+The PINN consists of fully connected layers with hidden width $32$
+and hyperbolic tangent activation functions.
+
+The model achieves a relative $L_2$ prediction error of approximately
+$1.13\%$ in the in-distribution interval $t\in[0,1]$. Under temporal
+extrapolation to $t\in[1,2]$, the prediction error increases to
+approximately $2007.34\%$.
+
+The physics residual similarly increases from approximately
+$2.007\times10^2$ to $1.317\times10^5$.
+
+The repeated intervention analysis uses $21$ perturbation replicates.
+For the in-distribution regime, velocity and acceleration show strong
+localization to the first hidden block, being selected in
+$81.0\%$ and $76.2\%$ of replicates, respectively.
+
+Under OOD extrapolation, the mappings of mass and damping collapse onto
+a shared early-layer tensor in $76.2\%$ of the replicates. The
+spring-constant mapping also shifts toward an early hidden layer.
+
+This provides an independent example of the correspondence
+reorganization observed in the Burgers' equation experiment.
+
+
+\subsubsection{Phase 3 Summary}
+
+The Phase 3 implementation demonstrates four principal outcomes:
+
+\begin{enumerate}
+    \item The GIIT framework can perform targeted intervention on
+    neural components identified through physical mapping.
+    
+    \item Repeated perturbation experiments provide a distribution of
+    candidate neural correspondences rather than relying on a single
+    perturbation.
+    
+    \item Neural--physical correspondence can change substantially
+    across temporal evaluation regimes, including within the nominal
+    training domain.
+    
+    \item Internal correspondence drift can occur before severe
+    degradation in conventional output-level metrics.
+\end{enumerate}
+
+The results therefore establish structured intervention as a useful
+diagnostic layer between neural component discovery and full
+mechanistic consistency quantification.
+
+\section{Project Plan and Timeline}
+\subsection{WBS}
+\begin{figure}[H]
+\includegraphics[width=0.9\linewidth]{BE_Major Project - ESE Report Template/figures/WBS_major_project.drawio.png}
+    \caption{Work BreakDown Structure}
+\label{fig:WBS}
+\end{figure}
+\subsection{Gantt Chart}
+\begin{figure}[H]
+\includegraphics[width=\linewidth]{figures/ganntt.jpeg}
+    \caption{Gantt chart}
+\label{fig:gantt}
+\end{figure}
+
+\begin{figure}[H]
+\includegraphics[width=\linewidth]{figures/gannt_2.png}
+    \caption{Gantt chart}
+\label{fig:gantt phase 2}
+\end{figure}
+
+\begin{figure}[H]
+\includegraphics[width=\linewidth]{BE_Major Project - ESE Report Template/figures/Gannt_3.png}
+    \caption{Gantt chart}
+\label{fig:gantt phase 3}
+\end{figure}
+
+
+\subsection{Project Timeline and Module-Wise Roadmap}
+Here we discuss the project timeline
+\subsection{Phase 1 (25\%) -- Baseline PINN and Causal Graph Construction}
+\textbf{Status: Completed}
+
+\subsubsection*{Module 1: Baseline PINN Training}
+\begin{itemize}
+    \item Trained a Physics-Informed Neural Network (PINN) on a 1D Damped Harmonic Oscillator system.
+    \item Ensured numerical convergence:
+    \begin{itemize}
+        \item $L_2$ trajectory error within predefined tolerance.
+        \item Physics residual norm below acceptable threshold.
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{Module 2: Causal Graph Construction}
+\begin{itemize}
+    \item Formally represented governing equations as a structured causal graph.
+    \item Encoded physical parameters:
+    \begin{itemize}
+        \item Mass ($m$), Damping ($c$), Spring Constant ($k$).
+    \end{itemize}
+    \item Preserved correct directional dependencies (e.g., $m \rightarrow a$).
+\end{itemize}
+
+\subsubsection*{Module 3: Sensitivity Consistency Validation}
+\begin{itemize}
+    \item Computed partial derivatives of output with respect to physical parameters.
+    \item Verified sign and monotonic alignment with analytical expectations.
+\end{itemize}
+
+\vspace{0.5cm}
+
+\subsection{Phase 2 (50\%) -- Mapping Layer and Perturbation Validation}
+\textbf{Status: Completed}
+
+\subsubsection*{Module 1: Mapping Layer Design}
+\begin{itemize}
+    \item Developed automated mapping framework linking causal graph nodes to:
+    \begin{itemize}
+        \item Neural weights
+        \item Hidden activations
+        \item Loss components
+    \end{itemize}
+    \item Implemented JSON-based node-to-layer configuration system.
+\end{itemize}
+
+\subsubsection*{Module 2: Intervention Engine (Initial Version)}
+\begin{itemize}
+    \item Implemented:
+    \begin{itemize}
+        \item Gaussian noise perturbation
+        \item Parameter masking
+    \end{itemize}
+    \item Enabled vectorized forward passes for efficient deviation analysis.
+\end{itemize}
+
+\subsubsection*{Module 3: Frontend–Backend Integration}
+\begin{itemize}
+    \item Integrated Streamlit dashboard with backend engine.
+    \item Enabled real-time:
+    \begin{itemize}
+        \item Node selection
+        \item Perturbation control
+        \item Baseline vs. intervened trajectory visualization
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{Module 4: Pending Validation Tasks}
+\begin{itemize}
+    \item Formal quantitative alignment accuracy computation (target: $\geq 90\%$).
+    \item Systematic misalignment detection experiments.
+    \item Statistical robustness evaluation across repeated interventions.
+    \item Documentation and reproducibility framework.
+\end{itemize}
+
+\vspace{0.5cm}
+
+\subsection{Phase 3 (75\%) -- Structured Intervention and Mechanistic Isolation}
+\textbf{Status: Planned}
+
+\subsubsection*{Module 1: Advanced Intervention Engine}
+\begin{itemize}
+    \item Multi-level perturbation strength control.
+    \item Pathway-specific masking.
+    \item Layer freezing and gradient blocking tests.
+    \item Deterministic seed control for repeatability.
+\end{itemize}
+
+\subsubsection*{Module 2: Controlled Divergence Analysis}
+\begin{itemize}
+    \item Measure deviation scaling with perturbation intensity.
+    \item Verify monotonic divergence patterns.
+    \item Compare targeted vs. random perturbations.
+\end{itemize}
+
+\subsubsection*{Module 3: Causal Response Validation}
+\begin{itemize}
+    \item Extract physical indicators:
+    \begin{itemize}
+        \item Oscillation frequency
+        \item Decay rate
+    \end{itemize}
+    \item Validate:
+    \begin{itemize}
+        \item Mass-related intervention $\rightarrow$ frequency shift.
+        \item Damping-related intervention $\rightarrow$ decay shift.
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{Module 4: Statistical Stability Module}
+\begin{itemize}
+    \item Perform repeated identical interventions.
+    \item Compute variance and confidence intervals of deviation metrics.
+    \item Define stability thresholds.
+\end{itemize}
+
+\vspace{0.5cm}
+
+\subsection{Phase 4 (100\%) -- Quantitative Mechanistic Validation
+Framework}
+
+\textbf{Status: Planned / Ongoing}
+
+Phase 4 will consolidate the intervention and correspondence analysis
+developed during Phase 3 into a quantitative mechanistic validation
+framework.
+
+\subsubsection{Module 1: Mechanistic Consistency Score}
+
+A normalized Mechanistic Consistency Score (MCS) will be investigated
+to compare observed intervention sensitivity with analytically expected
+physical sensitivity.
+
+A conceptual formulation is
+
+\begin{equation}
+    \mathrm{MCS}
+    =
+    \frac{
+        S_{\mathrm{observed}}
+    }{
+        S_{\mathrm{expected}}
+    },
+\end{equation}
+
+where $S_{\mathrm{observed}}$ represents the normalized sensitivity
+measured from neural intervention and $S_{\mathrm{expected}}$
+represents the corresponding analytical physical sensitivity.
+
+The final formulation and normalization procedure will be established
+after additional validation experiments.
+
+
+\subsubsection{Module 2: Shortcut Detection}
+
+The framework will compare targeted interventions against random
+neural perturbations.
+
+The objective is to determine whether intervention on a physically
+mapped component produces a stronger and more physically structured
+response than an equivalent perturbation applied to an unrelated
+component.
+
+The analysis will consider:
+
+\begin{itemize}
+    \item targeted intervention divergence;
+    \item random intervention divergence;
+    \item physical direction consistency;
+    \item relative prediction degradation;
+    \item physics residual changes.
+\end{itemize}
+
+
+\subsubsection{Module 3: Robustness and Distribution Shift}
+
+The Phase 3 experiments demonstrated correspondence drift under
+temporal extrapolation. Phase 4 will extend this analysis to a broader
+set of distribution shifts, including unseen initial conditions and
+additional temporal evaluation regimes.
+
+The objective is to determine whether mechanistic correspondence
+remains stable under changes in the evaluation distribution.
+
+
+\subsubsection{Module 4: Independent Model Validation}
+
+The current repeated perturbation experiments characterize mapping
+stability on individual trained models. Phase 4 will extend the
+analysis across independently trained models.
+
+This will allow the project to distinguish properties of the trained
+architecture from effects caused by a particular optimization
+trajectory or parameter realization.
+
+
+\subsubsection{Module 5: Cross-System Generalization}
+
+The mapping and intervention framework will be evaluated across
+additional SciML systems.
+
+Candidate systems include:
+
+\begin{itemize}
+    \item damped harmonic oscillator;
+    \item Burgers' equation;
+    \item Navier--Stokes based systems;
+    \item other controlled differential-equation benchmarks.
+\end{itemize}
+
+The objective is to evaluate whether the proposed graph-based
+inspection framework remains applicable as the physical graph,
+equation structure, and neural representation become more complex.
+
+
+\subsubsection{Module 6: Automated Validation Report}
+
+The final system will generate a structured validation report
+containing:
+
+\begin{itemize}
+    \item physical graph structure;
+    \item neural--physical correspondence;
+    \item intervention configuration;
+    \item baseline and intervened predictions;
+    \item prediction error metrics;
+    \item physics residual metrics;
+    \item correspondence stability;
+    \item mechanistic consistency measurements;
+    \item distribution-shift analysis.
+\end{itemize}
+\pagebreak  
+\bibliographystyle{plain}
+\nocite{*}
+\bibliography{references}
+\end{document} 

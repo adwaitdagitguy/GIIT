@@ -1,0 +1,65 @@
+{
+  "nodes": [
+    {
+      "name": "velocity_block",
+      "type": "state",
+      "description": "Learns the velocity-time interaction term v0 * t",
+
+      "formula": "y = v0*t - 0.5*g*t^2",
+      "term": "v0 * t",
+      "variables": {
+        "v0": "Initial velocity (m/s)",
+        "t": "Time (seconds)"
+      }
+    },
+    {
+      "name": "gravity_block",
+      "type": "state",
+      "description": "Learns the gravity-time squared term g * t^2",
+
+      "formula": "y = v0*t - 0.5*g*t^2",
+      "term": "-0.5 * g * t^2",
+      "variables": {
+        "g": "Acceleration due to gravity (9.81 m/s^2)",
+        "t": "Time (seconds)"
+      }
+    },
+    {
+      "name": "combiner",
+      "type": "output",
+      "description": "Combines learned velocity and gravity components to produce final height",
+
+      "formula": "y = v0*t - 0.5*g*t^2",
+      "term": "Complete equation",
+      "variables": {}
+    }
+  ],
+
+  "edges": [
+    ["velocity_block", "combiner", 1.0],
+    ["gravity_block", "combiner", 1.0]
+  ],
+
+  "mapping": {
+    "velocity_block": "velocity_block",
+    "gravity_block": "gravity_block",
+    "combiner": "combiner"
+  },
+
+  "model_metadata": {
+    "model_name": "PhysicsMLP",
+    "version": "2.0",
+    "architecture": "velocity_block + gravity_block → combiner",
+    "formula": "y = v0*t - 0.5*g*t^2",
+    "domain": "Projectile Motion",
+    "intervention_supported": ["mask", "perturb", "freeze"],
+    "axis_labels": {
+      "x_label": "Time",
+      "x_unit": "seconds",
+      "y_label": "Height",
+      "y_unit": "meters",
+      "loss_label": "Mean Squared Error",
+      "loss_unit": "meters^2"
+    }
+  }
+}

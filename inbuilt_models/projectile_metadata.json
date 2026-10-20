@@ -1,0 +1,18 @@
+{
+    "system": "projectile_motion",
+    "formula": "y = v0*t - 0.5*g*t^2",
+    "inputs": [
+        "time",
+        "initial_velocity",
+        "gravity",
+        "angle"
+    ],
+    "output": "height",
+    "units": {
+        "time": "seconds",
+        "initial_velocity": "m/s",
+        "gravity": "m/s^2",
+        "angle": "degrees",
+        "height": "meters"
+    }
+}

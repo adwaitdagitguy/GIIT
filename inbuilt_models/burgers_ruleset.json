@@ -1,0 +1,12 @@
+{
+  "system": "1D Viscous Burgers Equation",
+  "quantities": {
+    "amplitude": {
+      "description": "Half the peak-to-peak range of the velocity field u(t, x). Higher viscosity typically leads to stronger diffusion, which decreases the amplitude of the velocity gradients and peaks.",
+      "method": "range",
+      "trend_key": "decreases_amplitude",
+      "unit": "m/s",
+      "compute_fn": "def compute(t, x):\n    if len(x) == 0:\n        return 0.0\n    return float((np.max(x) - np.min(x)) / 2.0)"
+    }
+  }
+}

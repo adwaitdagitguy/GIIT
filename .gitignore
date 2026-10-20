@@ -1,0 +1,59 @@
+# Python & virtual environment (prevents committing your local venv and bytecode)
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node & Frontend (prevents committing gigabytes of node packages and build output)
+frontend/node_modules/
+node_modules/
+frontend/dist/
+dist/
+.npm/
+.eslintcache
+
+# Environment / Secret variables (keeps API keys like OpenRouter/Ngrok safe)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# IDE & Editor folders
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# LaTeX temporary compilation files (keeps git clean when compiling report.tex)
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.nav
+*.snm
+*.vrb
+*.lof
+*.lot
+
+# Temporary test & run artifacts
+tmp/
+*.tmp
+*.log

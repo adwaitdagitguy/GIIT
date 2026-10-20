@@ -1,0 +1,43 @@
+{
+    "physics": {
+        "system": "projectile_motion",
+        "formula": "y = v0*t - 0.5*g*t^2",
+        "inputs": [
+            "time",
+            "initial_velocity",
+            "gravity",
+            "angle"
+        ],
+        "output": "height",
+        "units": {
+            "time": "seconds",
+            "initial_velocity": "m/s",
+            "gravity": "m/s^2",
+            "angle": "degrees",
+            "height": "meters"
+        }
+    },
+    "node_details": {
+        "velocity_block": {
+            "term": "v0 * t",
+            "description": "Velocity contribution to height",
+            "variables": {
+                "v0": "Initial velocity (m/s)",
+                "t": "Time (seconds)"
+            }
+        },
+        "gravity_block": {
+            "term": "-0.5 * g * t^2",
+            "description": "Effect of gravity reducing height",
+            "variables": {
+                "g": "Acceleration due to gravity (9.81 m/s^2)",
+                "t": "Time (seconds)"
+            }
+        },
+        "combiner": {
+            "term": "v0*t - 0.5*g*t^2",
+            "description": "Final height computation",
+            "variables": {}
+        }
+    }
+}

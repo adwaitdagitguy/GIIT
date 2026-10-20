@@ -1,0 +1,5 @@
+{
+  "velocity_block": "increase output",
+  "gravity_block": "decrease output",
+  "combiner": "combine effects without reversing direction"
+}

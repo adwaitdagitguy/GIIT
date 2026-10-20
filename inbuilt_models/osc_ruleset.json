@@ -1,0 +1,19 @@
+{
+  "system": "1D Damped Harmonic Oscillator",
+  "quantities": {
+    "frequency": {
+      "description": "Oscillation frequency computed from zero-crossings of the displacement signal x(t). More zero-crossings per unit time implies higher frequency.",
+      "method": "zero_crossing",
+      "trend_key": "increases_frequency",
+      "unit": "Hz",
+      "compute_fn": "def compute(t, x):\n    if len(x) < 2:\n        return 0.0\n    signs = np.sign(x)\n    crossings = int(np.sum(signs[1:] * signs[:-1] < 0))\n    T = float(t[-1] - t[0]) if float(t[-1] - t[0]) > 0 else 1.0\n    return crossings / (2.0 * T)"
+    },
+    "amplitude": {
+      "description": "Half the peak-to-peak range of the displacement signal x(t). Larger amplitude means the oscillation has more energy.",
+      "method": "range",
+      "trend_key": "decreases_amplitude",
+      "unit": "m",
+      "compute_fn": "def compute(t, x):\n    if len(x) == 0:\n        return 0.0\n    return float((np.max(x) - np.min(x)) / 2.0)"
+    }
+  }
+}
